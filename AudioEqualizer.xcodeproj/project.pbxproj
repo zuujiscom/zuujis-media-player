@@ -31,6 +31,9 @@
 		100000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* Assets.xcassets */; };
 		100000000000000000000070 /* PlayerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000070 /* PlayerEngine.swift */; };
 		100000000000000000000071 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000071 /* PlayerView.swift */; };
+		100000000000000000000072 /* NowPlaying.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000072 /* NowPlaying.swift */; };
+		100000000000000000000073 /* PlaybackQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000073 /* PlaybackQueue.swift */; };
+		100000000000000000000074 /* PlaylistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000074 /* PlaylistView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +64,9 @@
 		200000000000000000000013 /* AudioEqualizer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioEqualizer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000070 /* PlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEngine.swift; sourceTree = "<group>"; };
 		200000000000000000000071 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		200000000000000000000072 /* NowPlaying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlaying.swift; sourceTree = "<group>"; };
+		200000000000000000000073 /* PlaybackQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackQueue.swift; sourceTree = "<group>"; };
+		200000000000000000000074 /* PlaylistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +116,7 @@
 				200000000000000000000004 /* SpectrumAnalyzer.swift */,
 				200000000000000000000051 /* MilkdropPreset.swift */,
 				200000000000000000000070 /* PlayerEngine.swift */,
+				200000000000000000000072 /* NowPlaying.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -132,6 +139,7 @@
 				200000000000000000000008 /* PresetManager.swift */,
 				200000000000000000000042 /* DeviceProfileStore.swift */,
 				200000000000000000000052 /* MilkdropLibrary.swift */,
+				200000000000000000000073 /* PlaybackQueue.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -149,6 +157,7 @@
 				20000000000000000000000E /* DeviceSelectionView.swift */,
 				20000000000000000000000F /* PresetSectionView.swift */,
 				200000000000000000000071 /* PlayerView.swift */,
+				200000000000000000000074 /* PlaylistView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -245,6 +254,7 @@
 				100000000000000000000004 /* SpectrumAnalyzer.swift in Sources */,
 				100000000000000000000051 /* MilkdropPreset.swift in Sources */,
 				100000000000000000000070 /* PlayerEngine.swift in Sources */,
+				100000000000000000000072 /* NowPlaying.swift in Sources */,
 				100000000000000000000005 /* AudioDevice.swift in Sources */,
 				100000000000000000000006 /* EQBand.swift in Sources */,
 				100000000000000000000041 /* DeviceProfile.swift in Sources */,
@@ -252,6 +262,7 @@
 				100000000000000000000008 /* PresetManager.swift in Sources */,
 				100000000000000000000042 /* DeviceProfileStore.swift in Sources */,
 				100000000000000000000052 /* MilkdropLibrary.swift in Sources */,
+				100000000000000000000073 /* PlaybackQueue.swift in Sources */,
 				100000000000000000000009 /* MainView.swift in Sources */,
 				10000000000000000000000B /* SpectrumView.swift in Sources */,
 				100000000000000000000060 /* VisualizerShaders.swift in Sources */,
@@ -263,6 +274,7 @@
 				10000000000000000000000E /* DeviceSelectionView.swift in Sources */,
 				10000000000000000000000F /* PresetSectionView.swift in Sources */,
 				100000000000000000000071 /* PlayerView.swift in Sources */,
+				100000000000000000000074 /* PlaylistView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -9,28 +9,44 @@ import UniformTypeIdentifiers
 struct PlayerBar: View {
     @EnvironmentObject private var player: PlayerEngine
 
+    @EnvironmentObject private var queue: PlaybackQueue
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             nowPlaying
-                .frame(width: 270, alignment: .leading)
+                .frame(width: 236, alignment: .leading)
 
             transport
 
             Scrubber()
                 .frame(maxWidth: .infinity)
 
+            modeButtons
+
             volume
 
             Button {
-                PlayerActions.openFile(in: player)
+                openWindow(id: AudioEqualizerApp.playlistWindowID)
             } label: {
-                Label("Open", systemImage: "folder")
-                    .font(.system(size: 12, weight: .medium))
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.85))
                     .pill()
             }
             .buttonStyle(.plain)
-            .help("Open an audio file  (⇧⌘O)")
+            .help("Show the playlist  (⇧⌘L)")
+
+            Button {
+                PlayerActions.openFiles(in: player)
+            } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .pill()
+            }
+            .buttonStyle(.plain)
+            .help("Open audio files or a folder  (⇧⌘O)")
         }
         .padding(.horizontal, 16)
         .frame(height: 64)
@@ -108,11 +124,11 @@ struct PlayerBar: View {
     // MARK: Transport
 
     private var transport: some View {
-        HStack(spacing: 6) {
-            Button { player.skip(by: -10) } label: {
-                Image(systemName: "gobackward.10")
+        HStack(spacing: 8) {
+            Button { player.previous() } label: {
+                Image(systemName: "backward.fill")
             }
-            .help("Back 10 seconds  (⇧⌘←)")
+            .help("Previous  (⇧⌘[)")
 
             Button { player.togglePlayPause() } label: {
                 Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
@@ -123,16 +139,40 @@ struct PlayerBar: View {
             }
             .help("Play / Pause  (⇧⌘P)")
 
-            Button { player.skip(by: 10) } label: {
-                Image(systemName: "goforward.10")
+            Button { player.next() } label: {
+                Image(systemName: "forward.fill")
             }
-            .help("Forward 10 seconds  (⇧⌘→)")
+            .help("Next  (⇧⌘])")
         }
         .buttonStyle(.plain)
         .font(.system(size: 14))
         .foregroundStyle(.white.opacity(0.8))
-        .disabled(player.track == nil)
-        .opacity(player.track == nil ? 0.4 : 1)
+        .disabled(player.track == nil && queue.items.isEmpty)
+        .opacity(player.track == nil && queue.items.isEmpty ? 0.4 : 1)
+    }
+
+    private var modeButtons: some View {
+        HStack(spacing: 4) {
+            Button { queue.shuffle.toggle() } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(queue.shuffle ? Theme.cyan : .white.opacity(0.5))
+            }
+            .help(queue.shuffle ? "Shuffle is on" : "Shuffle is off")
+
+            Button { queue.repeatMode = queue.repeatMode.next } label: {
+                Image(systemName: queue.repeatMode == .one ? "repeat.1" : "repeat")
+                    .foregroundStyle(queue.repeatMode == .off ? .white.opacity(0.5) : Theme.cyan)
+            }
+            .help({
+                switch queue.repeatMode {
+                case .off: return "Repeat is off"
+                case .all: return "Repeating the playlist"
+                case .one: return "Repeating this track"
+                }
+            }())
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
     }
 
     private var volume: some View {
@@ -198,18 +238,34 @@ private struct Scrubber: View {
 }
 
 enum PlayerActions {
-    /// Everything the player can decode.
+    /// Everything the player can decode, plus folders of it.
     static let audioTypes: [UTType] = [.audio]
 
-    static func openFile(in player: PlayerEngine) {
+    /// Replaces the playlist with the chosen files or folders and plays.
+    static func openFiles(in player: PlayerEngine) {
+        choose(message: "Choose audio files, or a folder of them, to play through the equalizer.") { urls in
+            player.open(urls)
+        }
+    }
+
+    /// Appends to the playlist without interrupting playback.
+    static func addToPlaylist(in player: PlayerEngine) {
+        choose(message: "Choose audio files, or a folder of them, to add to the playlist.") { urls in
+            player.enqueue(urls)
+        }
+    }
+
+    private static func choose(message: String, then handle: @escaping @MainActor ([URL]) -> Void) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = audioTypes
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.message = "Choose an audio file to play through the equalizer."
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = message
         panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in player.open(url) }
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in handle(urls) }
         }
     }
 }

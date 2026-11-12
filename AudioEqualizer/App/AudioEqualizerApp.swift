@@ -52,6 +52,7 @@ struct AudioEqualizerApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(player)
+                .environmentObject(player.queue)
                 .environmentObject(audioEngine)
                 .environmentObject(audioEngine.meters)
                 .environmentObject(presetManager)
@@ -166,10 +167,20 @@ struct AudioEqualizerApp: App {
             }
 
             CommandMenu("Player") {
-                Button("Open Audio File…") {
-                    PlayerActions.openFile(in: player)
+                Button("Open Audio Files or Folder…") {
+                    PlayerActions.openFiles(in: player)
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Button("Add to Playlist…") {
+                    PlayerActions.addToPlaylist(in: player)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .option])
+
+                Button("Show Playlist") {
+                    openWindow(id: Self.playlistWindowID)
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
 
                 Divider()
 
@@ -177,7 +188,7 @@ struct AudioEqualizerApp: App {
                     player.togglePlayPause()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
-                .disabled(player.track == nil)
+                .disabled(player.track == nil && player.queue.items.isEmpty)
 
                 Button("Stop") {
                     player.stop()
@@ -186,6 +197,14 @@ struct AudioEqualizerApp: App {
 
                 Divider()
 
+                Button("Next Track") { player.next() }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                    .disabled(player.state == .stopped)
+
+                Button("Previous Track") { player.previous() }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                    .disabled(player.state == .stopped)
+
                 Button("Back 10 Seconds") { player.skip(by: -10) }
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
                     .disabled(player.state == .stopped)
@@ -193,6 +212,18 @@ struct AudioEqualizerApp: App {
                 Button("Forward 10 Seconds") { player.skip(by: 10) }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
                     .disabled(player.state == .stopped)
+
+                Divider()
+
+                Toggle("Shuffle", isOn: Binding(get: { player.queue.shuffle },
+                                                set: { player.queue.shuffle = $0 }))
+
+                Picker("Repeat", selection: Binding(get: { player.queue.repeatMode },
+                                                    set: { player.queue.repeatMode = $0 })) {
+                    Text("Off").tag(PlaybackQueue.Repeat.off)
+                    Text("Playlist").tag(PlaybackQueue.Repeat.all)
+                    Text("Track").tag(PlaybackQueue.Repeat.one)
+                }
             }
 
             CommandMenu("Engine") {
@@ -286,9 +317,17 @@ struct AudioEqualizerApp: App {
                 .environmentObject(milkdropLibrary)
         }
         .defaultSize(width: 1100, height: 680)
+
+        Window("Playlist", id: Self.playlistWindowID) {
+            PlaylistView()
+                .environmentObject(player)
+                .environmentObject(player.queue)
+        }
+        .defaultSize(width: 520, height: 620)
     }
 
     static let visualizerWindowID = "visualizer"
+    static let playlistWindowID = "playlist"
 
     private func openVisualizerWindow() {
         openWindow(id: Self.visualizerWindowID)

@@ -29,10 +29,11 @@ struct MainView: View {
             Rectangle().fill(Theme.hairline).frame(height: 1)
             PlayerBar()
         }
-        // Dropping an audio file anywhere on the window plays it.
+        // Dropping audio files or a folder anywhere on the window plays them.
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: { $0.isFileURL }) else { return false }
-            player.open(url)
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            player.open(files)
             return true
         }
         .frame(minWidth: 900, minHeight: 700)

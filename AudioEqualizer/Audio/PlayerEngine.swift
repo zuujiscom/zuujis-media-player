@@ -5,8 +5,8 @@ import AVFoundation
 import AppKit
 import Combine
 
-/// Plays audio files — FLAC, ALAC, WAV, AIFF, MP3, AAC — through the same EQ
-/// the system-wide route uses.
+/// Plays a queue of audio files — FLAC, ALAC, WAV, AIFF, MP3, AAC — through the
+/// same EQ the system-wide route uses.
 ///
 /// This is a second, fully separate audio path. It owns its own
 /// `AVAudioEngine` and never touches the Core Audio process tap or the
@@ -18,6 +18,12 @@ import Combine
 ///
 /// `AudioEngine` stays the source of truth for the bands, bypass and master
 /// gain; this class only mirrors them onto its own `AVAudioUnitEQ`.
+///
+/// **Gapless playback.** While a track plays, the next one is already scheduled
+/// on the same player node, so the node never runs dry and the join is
+/// sample-exact. That only works when the next file has the graph's sample rate
+/// and channel count; otherwise the graph is rebuilt at the end of the track,
+/// which costs a short gap. See `scheduleNext`.
 ///
 /// Files are decoded natively by `AVAudioFile` at their own sample rate and
 /// bit depth (float32 inside the graph, which holds any 24-bit sample exactly).
@@ -69,6 +75,12 @@ final class PlayerEngine: ObservableObject {
     }
     private static let volumeKey = "playerVolume"
 
+    let queue: PlaybackQueue
+
+    /// Fires when the timeline jumps — a seek, a new track, play or pause — so
+    /// Now Playing can resync its elapsed time.
+    let timelineChanged = PassthroughSubject<Void, Never>()
+
     // MARK: - Audio graph
 
     // Replaced whenever the graph is rebuilt: like the system route, a fresh
@@ -76,29 +88,59 @@ final class PlayerEngine: ObservableObject {
     private var engine = AVAudioEngine()
     private var player = AVAudioPlayerNode()
     private var eqNode = AVAudioUnitEQ(numberOfBands: EQPreset.defaultBands.count)
-    private var file: AVAudioFile?
+
+    /// What the graph was built for. A track with a different sample rate or
+    /// channel count needs a rebuild; one with the same plays gaplessly.
+    private var graphFormat: AVAudioFormat?
 
     /// Mirrors the bands, bypass and master gain from here.
     private weak var equalizer: AudioEngine?
     private var cancellables = Set<AnyCancellable>()
     private var configObserver: NSObjectProtocol?
 
-    /// Bumped by every schedule, stop and rebuild. A scheduled segment's
+    // MARK: - Scheduling
+
+    /// One scheduled stretch of one file. `startSample` is where it begins on
+    /// the player node's own timeline, which keeps counting across segments —
+    /// that is how a position is found without trusting callback timing.
+    private struct Segment {
+        var id: Int
+        var itemID: QueueItem.ID
+        var file: AVAudioFile
+        var info: TrackInfo
+        var fileStart: AVAudioFramePosition
+        var startSample: AVAudioFramePosition
+        var frames: AVAudioFramePosition
+    }
+
+    /// The playing segment first, then at most one scheduled after it.
+    private var segments: [Segment] = []
+    private var nextSegmentID = 0
+
+    /// Bumped by every session start, stop and rebuild. A scheduled segment's
     /// completion handler also fires when the node is stopped for a seek, so a
     /// handler only counts if it still belongs to the current session —
     /// otherwise every seek would look like "the track ended".
     private var session = 0
 
-    /// Frame where the current schedule began, and the frame a pause stopped at.
-    private var startFrame: AVAudioFramePosition = 0
+    /// The track that could not be pre-scheduled (a different format, or
+    /// unreadable), so reconciling the queue does not keep retrying it.
+    private var unschedulableNext: QueueItem.ID?
+
+    /// The frame a pause stopped at.
     private var pausedFrame: AVAudioFramePosition = 0
+
+    /// Tracks currently scheduled on the node: 2 means the next one is already
+    /// queued behind the playing one, which is what makes a join gapless.
+    var scheduledTrackCount: Int { segments.count }
 
     // MARK: - Metering
 
     private let analyzer = SpectrumAnalyzer()
     private let latest = LatestFrame()
 
-    init() {
+    init(queue: PlaybackQueue? = nil) {
+        self.queue = queue ?? PlaybackQueue()
         let stored = UserDefaults.standard.object(forKey: Self.volumeKey) as? Float
         _volume = Published(initialValue: min(1, max(0, stored ?? 1)))
     }
@@ -122,33 +164,89 @@ final class PlayerEngine: ObservableObject {
         }
         .store(in: &cancellables)
 
+        // Editing the queue can invalidate what is already scheduled.
+        Publishers.Merge4(
+            queue.$items.map { _ in () },
+            queue.$currentID.map { _ in () },
+            queue.$shuffle.map { _ in () },
+            queue.$repeatMode.map { _ in () }
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] in
+            MainActor.assumeIsolated { self?.reconcileWithQueue() }
+        }
+        .store(in: &cancellables)
+
         // While a file is playing, the visualizer reads the player's own
         // samples: the system tap can't see this process's output.
         equalizer.externalVisualizerFrame = { [weak self] in
             guard let self, self.state == .playing else { return nil }
             return self.latest.read()
         }
+
+        nowPlaying = NowPlayingController(player: self)
+        restoreCurrentTrack()
+    }
+
+    private var nowPlaying: NowPlayingController?
+
+    /// After a relaunch the queue remembers what was playing; show it in the
+    /// bar, ready to resume, without starting any audio.
+    private func restoreCurrentTrack() {
+        guard track == nil, let item = queue.current,
+              let file = try? AVAudioFile(forReading: item.url) else { return }
+        track = Self.makeInfo(for: file, item: item)
+        loadMetadata(for: item.url)
     }
 
     // MARK: - Transport
 
-    func open(_ url: URL) {
+    /// Replaces the queue with these files (or the audio in these folders) and
+    /// plays the first.
+    func open(_ urls: [URL]) {
+        let added = queue.add(urls: urls, replacing: true)
+        guard let first = added.first else {
+            errorMessage = "No playable audio files found."
+            return
+        }
+        play(first.id)
+    }
+
+    /// Adds to the end of the queue without interrupting what is playing.
+    func enqueue(_ urls: [URL]) {
+        let hadCurrent = queue.currentID != nil
+        let added = queue.add(urls: urls)
+        if !hadCurrent, let first = added.first, state == .stopped {
+            queue.setCurrent(first.id)
+            restoreCurrentTrack()
+        }
+        // What is playing may now have a next track to pre-schedule.
+        reconcileWithQueue()
+    }
+
+    func play(_ id: QueueItem.ID) {
+        playItem(id, attempts: 0)
+    }
+
+    /// Unreadable files are skipped (once around the queue at most), so one bad
+    /// file cannot stall an album.
+    private func playItem(_ id: QueueItem.ID, attempts: Int) {
+        guard let item = queue.item(withID: id) else { return }
+        queue.setCurrent(id)
         do {
-            let opened = try AVAudioFile(forReading: url)
-            tearDownGraph()
-            file = opened
-            let info = Self.makeInfo(for: opened, url: url)
-            track = info
+            let segment = try makeSegment(for: item, fileStart: 0, startSample: 0)
+            try prepareGraph(for: segment.file.processingFormat)
+            track = segment.info
             errorMessage = nil
-            try buildGraph(format: opened.processingFormat)
-            try startPlayback(from: 0, playing: true)
-            loadMetadata(for: url)
+            try startSession(segment, playing: true)
+            loadMetadata(for: item.url)
         } catch {
-            tearDownGraph()
-            file = nil
-            track = nil
-            state = .stopped
-            errorMessage = "Couldn't play \(url.lastPathComponent): \(error.localizedDescription)"
+            errorMessage = "Couldn't play \(item.url.lastPathComponent): \(error.localizedDescription)"
+            if attempts < queue.items.count, let next = queue.itemForSkipForward(), next.id != id {
+                playItem(next.id, attempts: attempts + 1)
+            } else {
+                finish()
+            }
         }
     }
 
@@ -157,8 +255,7 @@ final class PlayerEngine: ObservableObject {
         case .playing: pause()
         case .paused: resume()
         case .stopped:
-            guard file != nil else { return }
-            fail { try startPlayback(from: 0, playing: true) }
+            if let id = queue.currentID ?? queue.items.first?.id { play(id) }
         }
     }
 
@@ -168,64 +265,120 @@ final class PlayerEngine: ObservableObject {
         player.pause()
         state = .paused
         clearMeters()
+        timelineChanged.send()
     }
 
     func resume() {
         guard state == .paused else { return }
         player.play()
         state = .playing
+        timelineChanged.send()
     }
 
     func stop() {
-        guard file != nil else { return }
-        session += 1
-        player.stop()
-        engine.stop()
-        startFrame = 0
-        pausedFrame = 0
-        state = .stopped
-        clearMeters()
+        guard state != .stopped else { return }
+        finish()
+    }
+
+    func next() {
+        if let item = queue.itemForSkipForward() {
+            play(item.id)
+        } else {
+            finish()
+        }
+    }
+
+    /// Past the first few seconds, Previous restarts the track, as on any
+    /// player; near the start it goes back one.
+    func previous() {
+        if state != .stopped, currentTime() > 3 {
+            seek(to: 0)
+        } else if let item = queue.itemForSkipBack() {
+            play(item.id)
+        } else {
+            seek(to: 0)
+        }
     }
 
     func seek(to seconds: Double) {
-        guard let file, state != .stopped else { return }
-        let rate = file.processingFormat.sampleRate
-        let frame = AVAudioFramePosition(max(0, min(seconds, track?.duration ?? seconds)) * rate)
-        fail { try startPlayback(from: frame, playing: state == .playing) }
+        guard state != .stopped, let first = segments.first, let rate = graphFormat?.sampleRate else { return }
+        let duration = Double(first.file.length) / rate
+        let frame = AVAudioFramePosition(max(0, min(seconds, duration)) * rate)
+        resume(segment: first, at: frame, playing: state == .playing)
     }
 
     func skip(by seconds: Double) {
         seek(to: currentTime() + seconds)
     }
 
-    /// Seconds into the track. Polled by the UI rather than published: a
-    /// published position would redraw every view that observes the player on
+    /// Seconds into the current track. Polled by the UI rather than published:
+    /// a published position would redraw every view that observes the player on
     /// each tick.
     func currentTime() -> Double {
-        guard let file else { return 0 }
-        return Double(currentFrame()) / file.processingFormat.sampleRate
+        guard let rate = graphFormat?.sampleRate, rate > 0 else { return 0 }
+        return Double(currentFrame()) / rate
     }
 
+    /// The frame within the current file. While playing it is read off the
+    /// player node's own clock and matched against the scheduled segments, so
+    /// it is right through a gapless join even before the join's callback runs.
     private func currentFrame() -> AVAudioFramePosition {
-        guard let file else { return 0 }
         switch state {
         case .stopped:
             return 0
         case .paused:
             return pausedFrame
         case .playing:
+            guard let first = segments.first else { return 0 }
             guard let nodeTime = player.lastRenderTime,
-                  let playerTime = player.playerTime(forNodeTime: nodeTime) else { return startFrame }
-            return min(file.length, startFrame + max(0, playerTime.sampleTime))
+                  let playerTime = player.playerTime(forNodeTime: nodeTime) else { return first.fileStart }
+            let t = max(0, playerTime.sampleTime)
+            for segment in segments where t < segment.startSample + segment.frames {
+                return segment.fileStart + (t - segment.startSample)
+            }
+            let last = segments[segments.count - 1]
+            return last.fileStart + last.frames
         }
     }
 
-    // MARK: - Scheduling
+    // MARK: - Sessions
 
-    /// (Re)schedules the file from `frame` and, when `playing`, starts it.
-    private func startPlayback(from frame: AVAudioFramePosition, playing: Bool) throws {
-        guard let file else { return }
+    private func makeSegment(for item: QueueItem, fileStart: AVAudioFramePosition,
+                             startSample: AVAudioFramePosition) throws -> Segment {
+        let file = try AVAudioFile(forReading: item.url)
+        nextSegmentID += 1
+        return Segment(
+            id: nextSegmentID,
+            itemID: item.id,
+            file: file,
+            info: Self.makeInfo(for: file, item: item),
+            fileStart: fileStart,
+            startSample: startSample,
+            frames: file.length - fileStart
+        )
+    }
 
+    /// Restarts `segment`'s file from `frame` — a seek, or a re-schedule after
+    /// the queue changed.
+    private func resume(segment: Segment, at frame: AVAudioFramePosition, playing: Bool) {
+        var restarted = segment
+        nextSegmentID += 1
+        restarted.id = nextSegmentID
+        restarted.fileStart = frame
+        restarted.startSample = 0
+        restarted.frames = segment.file.length - frame
+        do {
+            try startSession(restarted, playing: playing)
+            errorMessage = nil
+        } catch {
+            errorMessage = "Playback failed: \(error.localizedDescription)"
+            finish()
+        }
+    }
+
+    /// Starts a fresh session on `segment` and, when `playing`, plays it. The
+    /// next track is scheduled behind it for gapless playback.
+    private func startSession(_ segment: Segment, playing: Bool) throws {
         // Invalidate first: stopping the node fires the old segment's handler.
         session += 1
         let token = session
@@ -236,62 +389,135 @@ final class PlayerEngine: ObservableObject {
             try engine.start()
         }
 
-        let remaining = file.length - frame
-        guard remaining > 0 else {
+        segments = []
+        unschedulableNext = nil
+        guard segment.frames > 0 else {
             finish()
             return
         }
 
-        player.scheduleSegment(
-            file,
-            startingFrame: frame,
-            frameCount: AVAudioFrameCount(remaining),
-            at: nil,
-            completionCallbackType: .dataPlayedBack
-        ) { [weak self] _ in
-            Task { @MainActor in self?.segmentFinished(token) }
-        }
+        var first = segment
+        first.startSample = 0
+        schedule(first, token: token)
+        segments = [first]
+        pausedFrame = first.fileStart
+        scheduleNext(token: token)
 
-        startFrame = frame
-        pausedFrame = frame
         if playing {
             player.play()
             state = .playing
         } else {
             state = .paused
         }
+        timelineChanged.send()
     }
 
-    private func segmentFinished(_ token: Int) {
-        guard token == session else { return }
-        finish()
+    private func schedule(_ segment: Segment, token: Int) {
+        let id = segment.id
+        player.scheduleSegment(
+            segment.file,
+            startingFrame: segment.fileStart,
+            frameCount: AVAudioFrameCount(segment.frames),
+            at: nil,
+            completionCallbackType: .dataPlayedBack
+        ) { [weak self] _ in
+            Task { @MainActor in self?.segmentFinished(token: token, segmentID: id) }
+        }
+    }
+
+    /// Schedules the track after the current one behind it, if the queue has
+    /// one and it can join without a rebuild.
+    private func scheduleNext(token: Int) {
+        guard segments.count == 1, let last = segments.last,
+              let item = queue.itemAfterCurrent(),
+              let graphFormat else { return }
+
+        do {
+            let segment = try makeSegment(
+                for: item, fileStart: 0, startSample: last.startSample + last.frames
+            )
+            let format = segment.file.processingFormat
+            guard segment.frames > 0,
+                  format.sampleRate == graphFormat.sampleRate,
+                  format.channelCount == graphFormat.channelCount else {
+                // A different format needs a new graph; that happens when the
+                // current track ends, at the cost of a short gap.
+                unschedulableNext = item.id
+                return
+            }
+            schedule(segment, token: token)
+            segments.append(segment)
+        } catch {
+            unschedulableNext = item.id
+        }
+    }
+
+    private func segmentFinished(token: Int, segmentID: Int) {
+        guard token == session, let first = segments.first, first.id == segmentID else { return }
+        segments.removeFirst()
+
+        if let playing = segments.first {
+            // The join already happened in the audio; catch the bookkeeping up.
+            queue.setCurrent(playing.itemID)
+            track = playing.info
+            loadMetadata(for: playing.info.url)
+            scheduleNext(token: token)
+            timelineChanged.send()
+        } else if let item = queue.itemAfterCurrent() {
+            // Nothing was pre-scheduled: a different format, or an unreadable file.
+            playItem(item.id, attempts: 0)
+        } else {
+            finish()
+        }
+    }
+
+    /// Brings what is scheduled in line with the queue after an edit.
+    private func reconcileWithQueue() {
+        guard state != .stopped, let first = segments.first else { return }
+
+        // The current item was removed from the queue.
+        if queue.currentID != first.itemID {
+            if let id = queue.currentID, state == .playing {
+                play(id)
+            } else {
+                finish()
+            }
+            return
+        }
+
+        let wanted = queue.itemAfterCurrent()?.id
+        let scheduled = segments.count > 1 ? segments[1].itemID : nil
+        guard wanted != scheduled, wanted != unschedulableNext || scheduled != nil else { return }
+
+        // Re-deal from where it is. A brief gap, only when the queue is edited.
+        resume(segment: first, at: currentFrame(), playing: state == .playing)
     }
 
     private func finish() {
         session += 1
         player.stop()
         engine.stop()
-        startFrame = 0
+        segments = []
         pausedFrame = 0
         state = .stopped
         clearMeters()
-    }
-
-    private func fail(_ body: () throws -> Void) {
-        do {
-            try body()
-            errorMessage = nil
-        } catch {
-            errorMessage = "Playback failed: \(error.localizedDescription)"
-            session += 1
-            player.stop()
-            engine.stop()
-            state = .stopped
-            clearMeters()
-        }
+        timelineChanged.send()
     }
 
     // MARK: - Graph
+
+    /// Builds the graph unless the existing one already fits this format.
+    private func prepareGraph(for format: AVAudioFormat) throws {
+        if let graphFormat, graphFormat.sampleRate == format.sampleRate,
+           graphFormat.channelCount == format.channelCount, eqNode.engine != nil {
+            return
+        }
+        session += 1
+        removeMeterTap()
+        player.stop()
+        engine.stop()
+        try buildGraph(format: format)
+    }
 
     private func buildGraph(format: AVAudioFormat) throws {
         let newEngine = AVAudioEngine()
@@ -308,6 +534,7 @@ final class PlayerEngine: ObservableObject {
         engine = newEngine
         player = newPlayer
         eqNode = newEQ
+        graphFormat = format
         applyEQ()
         installMeterTap()
 
@@ -323,24 +550,12 @@ final class PlayerEngine: ObservableObject {
         }
     }
 
-    private func tearDownGraph() {
-        session += 1
-        if let configObserver {
-            NotificationCenter.default.removeObserver(configObserver)
-            self.configObserver = nil
-        }
-        removeMeterTap()
-        player.stop()
-        engine.stop()
-        state = .stopped
-        clearMeters()
-    }
-
     /// Rebuilds on a fresh engine and resumes where it was. Used when the
     /// output device changes and when the band count does.
     private func rebuildGraph() {
-        guard let file else { return }
+        guard let format = graphFormat else { return }
         let wasState = state
+        let first = segments.first
         let frame = wasState == .stopped ? 0 : currentFrame()
 
         session += 1
@@ -349,15 +564,14 @@ final class PlayerEngine: ObservableObject {
         engine.stop()
 
         do {
-            try buildGraph(format: file.processingFormat)
-            if wasState != .stopped {
-                try startPlayback(from: frame, playing: wasState == .playing)
+            try buildGraph(format: format)
+            if wasState != .stopped, let first {
+                resume(segment: first, at: frame, playing: wasState == .playing)
             }
             errorMessage = nil
         } catch {
             errorMessage = "Playback failed: \(error.localizedDescription)"
-            state = .stopped
-            clearMeters()
+            finish()
         }
     }
 
@@ -456,7 +670,8 @@ final class PlayerEngine: ObservableObject {
 
     // MARK: - Track info
 
-    private static func makeInfo(for file: AVAudioFile, url: URL) -> TrackInfo {
+    private static func makeInfo(for file: AVAudioFile, item: QueueItem) -> TrackInfo {
+        let url = item.url
         let format = file.fileFormat
         let asbd = format.streamDescription.pointee
         let rate = file.processingFormat.sampleRate
@@ -491,9 +706,9 @@ final class PlayerEngine: ObservableObject {
 
         return TrackInfo(
             url: url,
-            title: url.deletingPathExtension().lastPathComponent,
-            artist: nil,
-            album: nil,
+            title: item.title,
+            artist: item.artist,
+            album: item.album,
             artwork: nil,
             codec: codec,
             sampleRate: rate,
@@ -504,8 +719,8 @@ final class PlayerEngine: ObservableObject {
         )
     }
 
-    /// Title, artist, album and cover art from the file's tags, filled in once
-    /// they load. The file name stands in until then.
+    /// Cover art, plus tags the queue has not loaded yet, once they load. The
+    /// queue's own title stands in until then.
     private func loadMetadata(for url: URL) {
         Task { [weak self] in
             let asset = AVURLAsset(url: url)
@@ -524,6 +739,7 @@ final class PlayerEngine: ObservableObject {
             self.track?.artist = artist
             self.track?.album = album
             if let artData { self.track?.artwork = NSImage(data: artData) }
+            self.timelineChanged.send()
         }
     }
 }
