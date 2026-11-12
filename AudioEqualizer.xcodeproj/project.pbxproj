@@ -29,6 +29,8 @@
 		10000000000000000000000E /* DeviceSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* DeviceSelectionView.swift */; };
 		10000000000000000000000F /* PresetSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* PresetSectionView.swift */; };
 		100000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* Assets.xcassets */; };
+		100000000000000000000070 /* PlayerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000070 /* PlayerEngine.swift */; };
+		100000000000000000000071 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000071 /* PlayerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +59,8 @@
 		200000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000012 /* AudioEqualizer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioEqualizer.entitlements; sourceTree = "<group>"; };
 		200000000000000000000013 /* AudioEqualizer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioEqualizer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000070 /* PlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEngine.swift; sourceTree = "<group>"; };
+		200000000000000000000071 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -105,6 +109,7 @@
 				200000000000000000000002 /* AudioEngine.swift */,
 				200000000000000000000004 /* SpectrumAnalyzer.swift */,
 				200000000000000000000051 /* MilkdropPreset.swift */,
+				200000000000000000000070 /* PlayerEngine.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -143,6 +148,7 @@
 				20000000000000000000000C /* BandControlsView.swift */,
 				20000000000000000000000E /* DeviceSelectionView.swift */,
 				20000000000000000000000F /* PresetSectionView.swift */,
+				200000000000000000000071 /* PlayerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -238,6 +244,7 @@
 				100000000000000000000002 /* AudioEngine.swift in Sources */,
 				100000000000000000000004 /* SpectrumAnalyzer.swift in Sources */,
 				100000000000000000000051 /* MilkdropPreset.swift in Sources */,
+				100000000000000000000070 /* PlayerEngine.swift in Sources */,
 				100000000000000000000005 /* AudioDevice.swift in Sources */,
 				100000000000000000000006 /* EQBand.swift in Sources */,
 				100000000000000000000041 /* DeviceProfile.swift in Sources */,
@@ -255,6 +262,7 @@
 				10000000000000000000000C /* BandControlsView.swift in Sources */,
 				10000000000000000000000E /* DeviceSelectionView.swift in Sources */,
 				10000000000000000000000F /* PresetSectionView.swift in Sources */,
+				100000000000000000000071 /* PlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

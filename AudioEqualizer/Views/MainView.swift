@@ -5,6 +5,7 @@ import SwiftUI
 struct MainView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var presets: PresetManager
+    @EnvironmentObject private var player: PlayerEngine
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +26,14 @@ struct MainView: View {
                     .frame(minHeight: geo.size.height)
                 }
             }
+            Rectangle().fill(Theme.hairline).frame(height: 1)
+            PlayerBar()
+        }
+        // Dropping an audio file anywhere on the window plays it.
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { $0.isFileURL }) else { return false }
+            player.open(url)
+            return true
         }
         .frame(minWidth: 900, minHeight: 700)
         // Up into the hidden title bar, so the header shares its row with
@@ -163,4 +172,5 @@ struct PowerButton: View {
         .environmentObject(AudioEngine().meters)
         .environmentObject(PresetManager())
         .environmentObject(DeviceProfileStore())
+        .environmentObject(PlayerEngine())
 }

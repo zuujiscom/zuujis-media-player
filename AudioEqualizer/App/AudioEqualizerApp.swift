@@ -46,10 +46,12 @@ struct AudioEqualizerApp: App {
     @StateObject private var presetManager = PresetManager()
     @StateObject private var deviceProfiles = DeviceProfileStore()
     @StateObject private var milkdropLibrary = MilkdropLibrary()
+    @StateObject private var player = PlayerEngine()
 
     var body: some Scene {
         WindowGroup {
             MainView()
+                .environmentObject(player)
                 .environmentObject(audioEngine)
                 .environmentObject(audioEngine.meters)
                 .environmentObject(presetManager)
@@ -63,6 +65,7 @@ struct AudioEqualizerApp: App {
                         return
                     }
                     #endif
+                    player.attach(to: audioEngine)
                     // The engine's device didSet runs during init, before this
                     // store exists, so the launch device is applied here.
                     guard audioEngine.deviceProfiles == nil else { return }
@@ -160,6 +163,36 @@ struct AudioEqualizerApp: App {
                     audioEngine.resetToFlat()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+
+            CommandMenu("Player") {
+                Button("Open Audio File…") {
+                    PlayerActions.openFile(in: player)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button(player.state == .playing ? "Pause" : "Play") {
+                    player.togglePlayPause()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(player.track == nil)
+
+                Button("Stop") {
+                    player.stop()
+                }
+                .disabled(player.state == .stopped)
+
+                Divider()
+
+                Button("Back 10 Seconds") { player.skip(by: -10) }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+                    .disabled(player.state == .stopped)
+
+                Button("Forward 10 Seconds") { player.skip(by: 10) }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+                    .disabled(player.state == .stopped)
             }
 
             CommandMenu("Engine") {

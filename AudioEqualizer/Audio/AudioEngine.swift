@@ -96,6 +96,9 @@ final class AudioEngine: NSObject, ObservableObject {
     private var ioProcID: AudioDeviceIOProcID?
     private var meterTimer: Timer?
 
+    /// Set by `PlayerEngine`; returns a frame only while a file is playing.
+    var externalVisualizerFrame: (() -> VisualizerFrame?)?
+
     private enum AudioRouteError: Error, CustomStringConvertible {
         case noOutputDevice
         case tapCreationFailed(OSStatus)
@@ -1026,6 +1029,10 @@ final class AudioEngine: NSObject, ObservableObject {
     /// long, which is tuned for frequency resolution and smears exactly the
     /// transients a beat-reactive visual needs to land on time.
     func visualizerFrame(waveformCount: Int = 256) -> VisualizerFrame {
+        // The file player's output never passes through the tap (which excludes
+        // this process), so while a file plays it supplies the frame itself.
+        if let frame = externalVisualizerFrame?() { return frame }
+
         guard isRunning,
               let buffer = renderer.copyLatestFrames(),
               let channel = buffer.floatChannelData?[0] else {
