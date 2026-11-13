@@ -146,8 +146,13 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   songs around it as the playlist. Right-click for **Play**, **Play Album**
   and **Add to Playlist**. The search box matches title, artist, album and
   genre.
-- The three buttons at the top right of the header show or hide the Library,
-  the Response graph and the Equalizer faders.
+- The buttons in the header show or hide the Library and choose the EQ view.
+  The **Response graph** and the **Equalizer faders** are one or the other:
+  clicking the one that is showing hides it, clicking the other switches. The
+  graph has the preamp and the 10/15/31 band choice too, so it does everything
+  the faders do. It also shows the player's spectrum while the EQ's power
+  button is off (the faders and graph then show the curve you have set, but the
+  player plays flat).
 
 **Editing tags.** Right-click a song, album or artist and choose **Edit Info…**
 to change title, artist, album, genre, year, track and disc. On an album or
