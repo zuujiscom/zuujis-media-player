@@ -21,10 +21,10 @@ struct BandControlsView: View {
                 } label: {
                     Label("Flat", systemImage: "arrow.counterclockwise")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(isFlat ? 0.35 : 0.85))
+                        .foregroundStyle(Theme.ink.opacity(isFlat ? 0.35 : 0.85))
                         .padding(.horizontal, 9)
                         .frame(height: 24)
-                        .background(Capsule().fill(Color.white.opacity(0.07)))
+                        .background(Capsule().fill(Theme.ink.opacity(0.07)))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -38,7 +38,7 @@ struct BandControlsView: View {
                 } label: {
                     Image(systemName: "tablecells")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(showBandDetails ? Theme.cyan : Color.white.opacity(0.6))
+                        .foregroundStyle(showBandDetails ? Theme.cyan : Theme.ink.opacity(0.6))
                         .frame(width: 26, height: 24)
                         .contentShape(Rectangle())
                 }
@@ -205,7 +205,7 @@ struct BandSlider: View {
             Text(gainText)
                 .font(.system(size: isCompact ? 8 : 9, weight: band.gain == 0 ? .regular : .semibold))
                 .monospacedDigit()
-                .foregroundStyle(band.isEnabled && band.gain != 0 ? gainColor : Color.white.opacity(0.28))
+                .foregroundStyle(band.isEnabled && band.gain != 0 ? gainColor : Theme.ink.opacity(0.28))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
@@ -226,7 +226,7 @@ struct BandSlider: View {
             Text(band.frequencyLabel)
                 .font(.system(size: isCompact ? 8 : 10, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(Theme.ink.opacity(0.7))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
@@ -235,7 +235,7 @@ struct BandSlider: View {
                 band.isEnabled.toggle()
             } label: {
                 Circle()
-                    .fill(band.isEnabled ? Theme.cyan : Color.white.opacity(0.18))
+                    .fill(band.isEnabled ? Theme.cyan : Theme.ink.opacity(0.18))
                     .frame(width: 7, height: 7)
                     .shadow(color: band.isEnabled ? Theme.cyan.opacity(0.7) : .clear, radius: 3)
                     .frame(width: 16, height: 12)
@@ -349,18 +349,18 @@ struct VerticalGainSlider: View {
                 // Scale marks at ±12 dB, so a glance places the cap.
                 ForEach([-18.0, -12.0, -6.0, 6.0, 12.0, 18.0], id: \.self) { mark in
                     Rectangle()
-                        .fill(Color.white.opacity(abs(mark) == 12 ? 0.16 : 0.08))
+                        .fill(Theme.ink.opacity(abs(mark) == 12 ? 0.16 : 0.08))
                         .frame(width: Self.trackWidth + (abs(mark) == 12 ? 6 : 3), height: 1)
                         .position(x: midX, y: yPosition(for: mark, height: geo.size.height))
                 }
 
                 Capsule()
-                    .fill(Color.white.opacity(0.10))
+                    .fill(Theme.ink.opacity(0.10))
                     .frame(width: Self.trackWidth, height: geo.size.height - Self.knobSize)
                     .position(x: midX, y: geo.size.height / 2)
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.30))
+                    .fill(Theme.ink.opacity(0.30))
                     .frame(width: Self.trackWidth + 8, height: 1)
                     .position(x: midX, y: zeroY)
 
@@ -536,7 +536,7 @@ struct PreampRow: View {
             Text("PREAMP")
                 .font(.system(size: 9.5, weight: .semibold))
                 .tracking(1.1)
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Theme.ink.opacity(0.45))
             Slider(value: $engine.masterGain, in: 0.25...AudioEngine.maxGain, step: 0.05)
                 .tint(engine.amplificationDB > 12 ? Theme.amber : Theme.mint)
             Text(String(format: "%+0.1f dB", engine.amplificationDB))
@@ -547,7 +547,7 @@ struct PreampRow: View {
             Text(String(format: "×%.2f", engine.masterGain))
                 .font(.system(size: 10.5, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(Theme.ink.opacity(0.4))
                 .frame(width: 44, alignment: .trailing)
             Button {
                 withAnimation(.spring(duration: 0.25)) {
@@ -556,7 +556,7 @@ struct PreampRow: View {
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(engine.masterGain == 1 ? 0.25 : 0.75))
+                    .foregroundStyle(Theme.ink.opacity(engine.masterGain == 1 ? 0.25 : 0.75))
             }
             .buttonStyle(.plain)
             .disabled(engine.masterGain == 1)
@@ -564,7 +564,7 @@ struct PreampRow: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.ink.opacity(0.04)))
     }
 }
 

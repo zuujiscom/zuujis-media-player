@@ -42,7 +42,7 @@ struct PresetMenu: View {
         } label: {
             Label("Presets", systemImage: "square.stack.3d.up")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.ink.opacity(0.85))
                 .pill()
         }
         .menuStyle(.button)
@@ -79,7 +79,7 @@ struct StatusMenu: View {
         } label: {
             Image(systemName: "info.circle")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(Theme.ink.opacity(0.6))
                 .frame(width: 28, height: 30)
                 .contentShape(Rectangle())
         }

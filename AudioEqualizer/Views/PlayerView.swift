@@ -39,7 +39,7 @@ struct PlayerBar: View {
             } label: {
                 Image(systemName: player.exclusiveMode ? "lock.fill" : "lock.open")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(player.exclusiveMode ? 0.95 : 0.4))
+                    .foregroundStyle(Theme.ink.opacity(player.exclusiveMode ? 0.95 : 0.4))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -52,7 +52,7 @@ struct PlayerBar: View {
             } label: {
                 Image(systemName: "waveform.badge.magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(player.matchSampleRate ? 0.95 : 0.4))
+                    .foregroundStyle(Theme.ink.opacity(player.matchSampleRate ? 0.95 : 0.4))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -65,7 +65,7 @@ struct PlayerBar: View {
             } label: {
                 Image(systemName: "music.note.list")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -76,7 +76,7 @@ struct PlayerBar: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -84,7 +84,7 @@ struct PlayerBar: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 64)
-        .background(Color.white.opacity(0.03))
+        .background(Theme.ink.opacity(0.03))
     }
 
     // MARK: Now playing
@@ -97,11 +97,11 @@ struct PlayerBar: View {
                 if let track = player.track {
                     Text(track.title)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.ink)
                         .lineLimit(1)
                     Text(track.artist ?? track.album ?? " ")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(Theme.ink.opacity(0.55))
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         if track.isLossless {
@@ -115,7 +115,7 @@ struct PlayerBar: View {
                         }
                         Text(track.formatSummary)
                             .font(.system(size: 10.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(Theme.ink.opacity(0.45))
                             .lineLimit(1)
                     }
                 } else if let error = player.errorMessage {
@@ -126,10 +126,10 @@ struct PlayerBar: View {
                 } else {
                     Text("Nothing playing")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Theme.ink.opacity(0.8))
                     Text("Open a FLAC, ALAC, WAV, AIFF, MP3 or AAC file")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Theme.ink.opacity(0.45))
                         .lineLimit(1)
                 }
             }
@@ -144,10 +144,10 @@ struct PlayerBar: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Color.white.opacity(0.06)
+                    Theme.ink.opacity(0.06)
                     Image(systemName: "music.note")
                         .font(.system(size: 17))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(Theme.ink.opacity(0.35))
                 }
             }
         }
@@ -180,7 +180,7 @@ struct PlayerBar: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 14))
-        .foregroundStyle(.white.opacity(0.8))
+        .foregroundStyle(Theme.ink.opacity(0.8))
         .disabled(player.track == nil && queue.items.isEmpty)
         .opacity(player.track == nil && queue.items.isEmpty ? 0.4 : 1)
     }
@@ -189,13 +189,13 @@ struct PlayerBar: View {
         HStack(spacing: 4) {
             Button { queue.shuffle.toggle() } label: {
                 Image(systemName: "shuffle")
-                    .foregroundStyle(queue.shuffle ? Theme.cyan : .white.opacity(0.5))
+                    .foregroundStyle(queue.shuffle ? Theme.cyan : Theme.ink.opacity(0.5))
             }
             .help(queue.shuffle ? "Shuffle is on" : "Shuffle is off")
 
             Button { queue.repeatMode = queue.repeatMode.next } label: {
                 Image(systemName: queue.repeatMode == .one ? "repeat.1" : "repeat")
-                    .foregroundStyle(queue.repeatMode == .off ? .white.opacity(0.5) : Theme.cyan)
+                    .foregroundStyle(queue.repeatMode == .off ? Theme.ink.opacity(0.5) : Theme.cyan)
             }
             .help({
                 switch queue.repeatMode {
@@ -213,7 +213,7 @@ struct PlayerBar: View {
         HStack(spacing: 6) {
             Image(systemName: player.volume < 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(Theme.ink.opacity(0.55))
                 .frame(width: 16)
             Slider(value: Binding(get: { Double(player.volume) },
                                   set: { player.volume = Float($0) }), in: 0...1)
@@ -260,7 +260,7 @@ private struct Scrubber: View {
                     .frame(width: 46, alignment: .leading)
             }
             .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(Theme.ink.opacity(0.55))
         }
     }
 

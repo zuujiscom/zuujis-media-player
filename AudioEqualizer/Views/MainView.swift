@@ -8,8 +8,10 @@ struct MainView: View {
     @EnvironmentObject private var player: PlayerEngine
     @AppStorage(Panels.library) private var showLibrary = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
+    @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
     var body: some View {
+        let _ = Theme.apply(themeID)
         VStack(spacing: 0) {
             HeaderBar()
             Rectangle().fill(Theme.hairline).frame(height: 1)
@@ -45,7 +47,9 @@ struct MainView: View {
         // the traffic lights instead of sitting under an empty strip.
         .ignoresSafeArea(.container, edges: .top)
         .background(AmbientBackground().ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(Theme.scheme)
+        // Rebuild on a theme change so every view reads the new palette.
+        .id(themeID)
     }
 }
 
@@ -87,7 +91,7 @@ struct PanelToggles: View {
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.white.opacity(isOn.wrappedValue ? 0.95 : 0.4))
+                .foregroundStyle(Theme.ink.opacity(isOn.wrappedValue ? 0.95 : 0.4))
                 .pill(active: isOn.wrappedValue)
         }
         .buttonStyle(.plain)
@@ -112,7 +116,7 @@ struct HeaderBar: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("AE2")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.ink)
                 statusLine
             }
             .padding(.trailing, 6)
@@ -136,12 +140,13 @@ struct HeaderBar: View {
             .buttonStyle(.plain)
             .help("Open the visualizer  (⇧⌘V)")
 
+            ThemeMenu()
             StatusMenu()
         }
         .padding(.leading, 84)
         .padding(.trailing, 14)
         .frame(height: 54)
-        .background(Color.white.opacity(0.025))
+        .background(Theme.ink.opacity(0.025))
         .onChange(of: presets.selectedPresetID) { _, newID in
             if let presetID = newID, let preset = presets.preset(withID: presetID) {
                 engine.applyPreset(preset)
@@ -174,7 +179,7 @@ struct BypassButton: View {
         } label: {
             Label("Bypass", systemImage: engine.isBypassed ? "circle.slash.fill" : "circle.slash")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(engine.isBypassed ? Theme.amber : Color.white.opacity(0.85))
+                .foregroundStyle(engine.isBypassed ? Theme.amber : Theme.ink.opacity(0.85))
                 .pill(active: engine.isBypassed, tint: Theme.amber)
         }
         .buttonStyle(.plain)
@@ -196,13 +201,13 @@ struct PowerButton: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(engine.isRunning ? Theme.mint.opacity(0.18) : Color.white.opacity(0.06))
+                    .fill(engine.isRunning ? Theme.mint.opacity(0.18) : Theme.ink.opacity(0.06))
                 Circle()
-                    .strokeBorder(engine.isRunning ? Theme.mint.opacity(0.9) : Color.white.opacity(0.18),
+                    .strokeBorder(engine.isRunning ? Theme.mint.opacity(0.9) : Theme.ink.opacity(0.18),
                                   lineWidth: 1.5)
                 Image(systemName: "power")
                     .font(.system(size: size * 0.41, weight: .bold))
-                    .foregroundStyle(engine.isRunning ? Theme.mint : Color.white.opacity(0.6))
+                    .foregroundStyle(engine.isRunning ? Theme.mint : Theme.ink.opacity(0.6))
             }
             .frame(width: size, height: size)
             .shadow(color: engine.isRunning ? Theme.mint.opacity(0.55) : .clear, radius: 6)

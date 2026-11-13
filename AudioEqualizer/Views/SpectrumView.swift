@@ -50,10 +50,10 @@ struct SpectrumView: View {
                     Text("±\(Int(range)) dB")
                         .font(.system(size: 10.5, weight: .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Theme.ink.opacity(0.8))
                         .padding(.horizontal, 8)
                         .frame(height: 22)
-                        .background(Capsule().fill(Color.white.opacity(0.07)))
+                        .background(Capsule().fill(Theme.ink.opacity(0.07)))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -105,7 +105,7 @@ struct SpectrumView: View {
         Text(text)
             .font(.system(size: 10.5, weight: .medium))
             .monospacedDigit()
-            .foregroundStyle(.white.opacity(0.5))
+            .foregroundStyle(Theme.ink.opacity(0.5))
     }
 
     // MARK: Editing
@@ -157,7 +157,7 @@ struct SpectrumView: View {
             )
         } else if !engine.isRunning {
             context.draw(
-                Text("ENGINE OFF").font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.3)),
+                Text("ENGINE OFF").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.ink.opacity(0.3)),
                 at: CGPoint(x: plot.maxX - 6, y: plot.minY + 6), anchor: .topTrailing
             )
         }
@@ -178,7 +178,7 @@ struct SpectrumView: View {
             minorPath.move(to: CGPoint(x: x, y: plot.minY))
             minorPath.addLine(to: CGPoint(x: x, y: plot.maxY))
         }
-        context.stroke(minorPath, with: .color(.white.opacity(0.025)), lineWidth: 1)
+        context.stroke(minorPath, with: .color(Theme.ink.opacity(0.025)), lineWidth: 1)
 
         var majorPath = Path()
         for (frequency, label) in labelled {
@@ -186,7 +186,7 @@ struct SpectrumView: View {
             majorPath.move(to: CGPoint(x: x, y: plot.minY))
             majorPath.addLine(to: CGPoint(x: x, y: plot.maxY))
             context.draw(
-                Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.38)),
+                Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(Theme.ink.opacity(0.38)),
                 at: CGPoint(x: x, y: plot.maxY + 4), anchor: .top
             )
         }
@@ -199,18 +199,18 @@ struct SpectrumView: View {
             majorPath.addLine(to: CGPoint(x: plot.maxX, y: y))
             context.draw(
                 Text(String(format: "%+.0f", db)).font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.38)),
+                    .foregroundStyle(Theme.ink.opacity(0.38)),
                 at: CGPoint(x: plot.minX - 5, y: y), anchor: .trailing
             )
         }
-        context.stroke(majorPath, with: .color(.white.opacity(0.06)), lineWidth: 1)
+        context.stroke(majorPath, with: .color(Theme.ink.opacity(0.06)), lineWidth: 1)
 
         var zero = Path()
         zero.move(to: CGPoint(x: plot.minX, y: layout.y(0)))
         zero.addLine(to: CGPoint(x: plot.maxX, y: layout.y(0)))
-        context.stroke(zero, with: .color(.white.opacity(0.20)), lineWidth: 1)
+        context.stroke(zero, with: .color(Theme.ink.opacity(0.20)), lineWidth: 1)
         context.draw(
-            Text("0").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.55)),
+            Text("0").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.ink.opacity(0.55)),
             at: CGPoint(x: plot.minX - 5, y: layout.y(0)), anchor: .trailing
         )
     }
@@ -269,7 +269,7 @@ struct SpectrumView: View {
         context.stroke(top, with: across, style: StrokeStyle(lineWidth: 1.6, lineJoin: .round))
 
         context.stroke(line(through: smoother.peaks, plot: plot),
-                       with: .color(.white.opacity(0.26)), lineWidth: 1)
+                       with: .color(Theme.ink.opacity(0.26)), lineWidth: 1)
     }
 
     private func drawCurve(_ context: inout GraphicsContext, layout: GraphLayout) {
@@ -288,7 +288,7 @@ struct SpectrumView: View {
         }
 
         if engine.isBypassed {
-            context.stroke(curve, with: .color(.white.opacity(0.35)),
+            context.stroke(curve, with: .color(Theme.ink.opacity(0.35)),
                            style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             return
         }
@@ -317,7 +317,7 @@ struct SpectrumView: View {
             layer.opacity = 0.55
             layer.stroke(curve, with: .color(Theme.mint), lineWidth: 4)
         }
-        context.stroke(curve, with: .color(.white.opacity(0.95)),
+        context.stroke(curve, with: .color(Theme.ink.opacity(0.95)),
                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
     }
 
@@ -337,13 +337,13 @@ struct SpectrumView: View {
             let isFocused = index == focused
             let r = isFocused ? radius + 2.5 : radius
             let circle = Path(ellipseIn: CGRect(x: centre.x - r, y: centre.y - r, width: r * 2, height: r * 2))
-            let tint = band.isEnabled ? Theme.gainColor(band.gain) : Color.white.opacity(0.25)
+            let tint = band.isEnabled ? Theme.gainColor(band.gain) : Theme.ink.opacity(0.25)
 
             if isFocused {
                 var guide = Path()
                 guide.move(to: CGPoint(x: centre.x, y: plot.minY))
                 guide.addLine(to: CGPoint(x: centre.x, y: plot.maxY))
-                context.stroke(guide, with: .color(.white.opacity(0.14)),
+                context.stroke(guide, with: .color(Theme.ink.opacity(0.14)),
                                style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 let halo = Path(ellipseIn: CGRect(x: centre.x - r - 5, y: centre.y - r - 5,
                                                   width: (r + 5) * 2, height: (r + 5) * 2))
@@ -375,7 +375,7 @@ struct SpectrumView: View {
         origin.x = min(max(origin.x, plot.minX + 2), plot.maxX - boxSize.width - 2)
         let box = Path(roundedRect: CGRect(origin: origin, size: boxSize), cornerRadius: 7)
         context.fill(box, with: .color(Color(red: 0.10, green: 0.11, blue: 0.17).opacity(0.96)))
-        context.stroke(box, with: .color(.white.opacity(0.16)), lineWidth: 1)
+        context.stroke(box, with: .color(Color.white.opacity(0.16)), lineWidth: 1)
         context.draw(resolved, at: CGPoint(x: origin.x + boxSize.width / 2, y: origin.y + boxSize.height / 2),
                      anchor: .center)
     }
@@ -459,7 +459,7 @@ struct LevelMeter: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.08))
+                Capsule().fill(Theme.ink.opacity(0.08))
                 LinearGradient(
                     stops: [
                         .init(color: Theme.mint, location: 0),

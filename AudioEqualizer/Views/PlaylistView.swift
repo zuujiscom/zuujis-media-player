@@ -34,7 +34,7 @@ struct PlaylistView: View {
         }
         .frame(minWidth: 460, minHeight: 360)
         .background(AmbientBackground().ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(Theme.scheme)
         // Dropping files or folders here adds them to the end.
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
@@ -51,10 +51,10 @@ struct PlaylistView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Playlist")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.ink)
                 Text(summary)
                     .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Theme.ink.opacity(0.45))
             }
 
             Spacer(minLength: 8)
@@ -62,7 +62,7 @@ struct PlaylistView: View {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Theme.ink.opacity(0.45))
                 TextField("Filter", text: $search)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -75,7 +75,7 @@ struct PlaylistView: View {
             } label: {
                 Label("Add", systemImage: "plus")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -87,7 +87,7 @@ struct PlaylistView: View {
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 12))
-                    .foregroundStyle(Color.white.opacity(0.7))
+                    .foregroundStyle(Theme.ink.opacity(0.7))
                     .pill()
             }
             .buttonStyle(.plain)
@@ -96,7 +96,7 @@ struct PlaylistView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 52)
-        .background(Color.white.opacity(0.025))
+        .background(Theme.ink.opacity(0.025))
     }
 
     private var summary: String {
@@ -153,13 +153,13 @@ struct PlaylistView: View {
         VStack(spacing: 10) {
             Image(systemName: "music.note.list")
                 .font(.system(size: 34))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(Theme.ink.opacity(0.3))
             Text("The playlist is empty")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Theme.ink.opacity(0.8))
             Text("Drop audio files or a folder here, or use Add.")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Theme.ink.opacity(0.45))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -174,18 +174,18 @@ private struct PlaylistRow: View {
         HStack(spacing: 10) {
             Image(systemName: isPlaying ? "speaker.wave.2.fill" : (isCurrent ? "speaker.fill" : "music.note"))
                 .font(.system(size: 10))
-                .foregroundStyle(isCurrent ? Theme.cyan : .white.opacity(0.25))
+                .foregroundStyle(isCurrent ? Theme.cyan : Theme.ink.opacity(0.25))
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
                     .font(.system(size: 12.5, weight: isCurrent ? .semibold : .regular))
-                    .foregroundStyle(isCurrent ? Theme.cyan : .white)
+                    .foregroundStyle(isCurrent ? Theme.cyan : Theme.ink)
                     .lineLimit(1)
                 if let line = subtitle {
                     Text(line)
                         .font(.system(size: 10.5))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Theme.ink.opacity(0.45))
                         .lineLimit(1)
                 }
             }
@@ -195,7 +195,7 @@ private struct PlaylistRow: View {
             if let duration = item.duration {
                 Text(Self.format(duration))
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Theme.ink.opacity(0.45))
             }
         }
         .padding(.vertical, 3)

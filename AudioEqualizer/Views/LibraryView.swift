@@ -65,17 +65,17 @@ struct LibraryView: View {
             Text("LIBRARY")
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.2)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.ink.opacity(0.85))
             Text(status)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Theme.ink.opacity(0.45))
 
             Spacer(minLength: 8)
 
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Theme.ink.opacity(0.45))
                 TextField("Search songs, artists, albums", text: $search)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -103,7 +103,7 @@ struct LibraryView: View {
             } label: {
                 Label("Folders", systemImage: "folder.badge.plus")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
                     .pill()
             }
             .menuStyle(.button)
@@ -132,19 +132,19 @@ struct LibraryView: View {
         VStack(spacing: 10) {
             Image(systemName: "music.note.house")
                 .font(.system(size: 30))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(Theme.ink.opacity(0.3))
             Text("Add a folder of music to build your library")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(Theme.ink.opacity(0.7))
             Text("Folders on external drives work too. They stay listed when the drive is unplugged.")
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(Theme.ink.opacity(0.4))
             Button {
                 addFolder()
             } label: {
                 Label("Add Music Folder…", systemImage: "plus")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(Theme.ink.opacity(0.9))
                     .pill(active: true)
             }
             .buttonStyle(.plain)
@@ -159,7 +159,7 @@ struct LibraryView: View {
             Text("\(title.uppercased())  \(count)")
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.8)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(Theme.ink.opacity(0.4))
                 .padding(.horizontal, 4)
             ScrollView {
                 LazyVStack(spacing: 1) { content() }
@@ -218,7 +218,7 @@ struct LibraryView: View {
                             .foregroundStyle(Theme.cyan)
                     } else {
                         Text(song.trackNumber.map(String.init) ?? "")
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(Theme.ink.opacity(0.35))
                     }
                 }
                 .font(.system(size: 10.5, weight: .medium))
@@ -227,11 +227,11 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(song.title)
                         .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
-                        .foregroundStyle(isCurrent ? Theme.cyan : .white.opacity(0.88))
+                        .foregroundStyle(isCurrent ? Theme.cyan : Theme.ink.opacity(0.88))
                         .lineLimit(1)
                     Text(artist == nil || album == nil ? "\(song.artistName) · \(song.albumName)" : "")
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(Theme.ink.opacity(0.4))
                         .lineLimit(1)
                         .opacity(artist == nil || album == nil ? 1 : 0)
                         .frame(height: artist == nil || album == nil ? nil : 0)
@@ -239,11 +239,11 @@ struct LibraryView: View {
                 Spacer(minLength: 6)
                 Text(Self.time(song.duration))
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(Theme.ink.opacity(0.4))
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Color.white.opacity(0.06) : .clear))
+            .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Theme.ink.opacity(0.06) : .clear))
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.play(urls: songs.map(\.url), startingAt: index) }
             .contextMenu {
@@ -265,19 +265,19 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.black.opacity(0.85) : .white.opacity(0.85))
+                        .foregroundStyle(selected ? Color.black.opacity(0.85) : Theme.ink.opacity(0.85))
                         .lineLimit(1)
                     if let subtitle {
                         Text(subtitle)
                             .font(.system(size: 10))
-                            .foregroundStyle(selected ? Color.black.opacity(0.6) : .white.opacity(0.4))
+                            .foregroundStyle(selected ? Color.black.opacity(0.6) : Theme.ink.opacity(0.4))
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 4)
                 Text(detail)
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                    .foregroundStyle(selected ? Color.black.opacity(0.6) : .white.opacity(0.35))
+                    .foregroundStyle(selected ? Color.black.opacity(0.6) : Theme.ink.opacity(0.35))
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -396,7 +396,7 @@ struct EditTagsSheet: View {
         }
         .padding(20)
         .frame(width: 400)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(Theme.scheme)
         .onAppear(perform: load)
     }
 
