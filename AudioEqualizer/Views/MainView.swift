@@ -7,8 +7,7 @@ struct MainView: View {
     @EnvironmentObject private var presets: PresetManager
     @EnvironmentObject private var player: PlayerEngine
     @AppStorage(Panels.library) private var showLibrary = true
-    @AppStorage(Panels.response) private var showResponse = true
-    @AppStorage(Panels.equalizer) private var showEqualizer = true
+    @AppStorage(Panels.eq) private var eqPanel = Panels.response
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,8 +22,8 @@ struct MainView: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         if showLibrary { LibraryView() }
-                        if showResponse { SpectrumView() }
-                        if showEqualizer {
+                        if eqPanel == Panels.response { SpectrumView() }
+                        if eqPanel == Panels.equalizer {
                             BandControlsView()
                                 .frame(maxWidth: .infinity)
                         }
@@ -56,21 +55,30 @@ struct MainView: View {
 /// header; hiding one gives its space to the others.
 enum Panels {
     static let library = "showLibrary"
-    static let response = "showResponse"
-    static let equalizer = "showEqualizer"
+    /// Which EQ view shows: the response graph, the faders, or neither.
+    static let eq = "eqPanel"
+    static let response = "response"
+    static let equalizer = "faders"
+    static let hidden = "none"
 }
 
 struct PanelToggles: View {
     @AppStorage(Panels.library) private var showLibrary = true
-    @AppStorage(Panels.response) private var showResponse = true
-    @AppStorage(Panels.equalizer) private var showEqualizer = true
+    @AppStorage(Panels.eq) private var eqPanel = Panels.response
 
+    /// The EQ is shown as the response graph or as faders, never both; the
+    /// button for the one showing hides it.
     var body: some View {
         HStack(spacing: 6) {
             toggle("books.vertical", isOn: $showLibrary, name: "Library")
-            toggle("waveform.path.ecg", isOn: $showResponse, name: "Response graph")
-            toggle("slider.vertical.3", isOn: $showEqualizer, name: "Equalizer faders")
+            toggle("waveform.path.ecg", isOn: choice(Panels.response), name: "Response graph")
+            toggle("slider.vertical.3", isOn: choice(Panels.equalizer), name: "Equalizer faders")
         }
+    }
+
+    private func choice(_ value: String) -> Binding<Bool> {
+        Binding(get: { eqPanel == value },
+                set: { eqPanel = $0 ? value : Panels.hidden })
     }
 
     private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String) -> some View {

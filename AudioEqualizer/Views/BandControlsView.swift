@@ -28,15 +28,7 @@ struct BandControlsView: View {
                 .disabled(isFlat)
                 .help("Set every band to 0 dB  (⇧⌘R)")
 
-                Picker("Bands", selection: bandCountSelection) {
-                    Text("10").tag(10)
-                    Text("15").tag(15)
-                    Text("31").tag(31)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 132)
-                .help("Number of bands")
+                BandCountPicker()
 
                 Button {
                     withAnimation(.easeOut(duration: 0.2)) { showBandDetails.toggle() }
@@ -51,7 +43,7 @@ struct BandControlsView: View {
                 .help("Show every band's frequency, gain, Q and type")
             }
 
-            amplificationRow
+            PreampRow()
 
             bandRow
 
@@ -111,52 +103,6 @@ struct BandControlsView: View {
         .padding(.vertical, 6)
     }
 
-    private var amplificationRow: some View {
-        HStack(spacing: 10) {
-            Text("PREAMP")
-                .font(.system(size: 9.5, weight: .semibold))
-                .tracking(1.1)
-                .foregroundStyle(.white.opacity(0.45))
-            Slider(value: $engine.masterGain, in: 0.25...AudioEngine.maxGain, step: 0.05)
-                .tint(engine.amplificationDB > 12 ? Theme.amber : Theme.mint)
-            Text(String(format: "%+0.1f dB", engine.amplificationDB))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Theme.gainColor(engine.amplificationDB))
-                .frame(width: 64, alignment: .trailing)
-            Text(String(format: "×%.2f", engine.masterGain))
-                .font(.system(size: 10.5, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(width: 44, alignment: .trailing)
-            Button {
-                withAnimation(.spring(duration: 0.25)) {
-                    engine.masterGain = 1.0
-                }
-            } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(engine.masterGain == 1 ? 0.25 : 0.75))
-            }
-            .buttonStyle(.plain)
-            .disabled(engine.masterGain == 1)
-            .help("Reset the preamp to 0 dB")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.04)))
-    }
-
-    private var bandCountSelection: Binding<Int> {
-        Binding(
-            get: { engine.bands.count },
-            set: { newCount in
-                // Deferred: mutating engine state inside a binding setter runs
-                // during the view update, which SwiftUI warns about.
-                DispatchQueue.main.async { engine.setBandCount(newCount) }
-            }
-        )
-    }
 
     /// Bindings are captured by index, but the band count can shrink underneath
     /// them (switching 31-band → 15-band), so both sides must tolerate an index
@@ -574,5 +520,75 @@ struct BandEditable {
             return String(format: "%.1fk", frequency / 1000)
         }
         return String(format: "%.0f", frequency)
+    }
+}
+
+/// The preamp slider: overall gain ahead of the bands. Shared by the faders
+/// and the response graph.
+struct PreampRow: View {
+    @EnvironmentObject private var engine: AudioEngine
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("PREAMP")
+                .font(.system(size: 9.5, weight: .semibold))
+                .tracking(1.1)
+                .foregroundStyle(.white.opacity(0.45))
+            Slider(value: $engine.masterGain, in: 0.25...AudioEngine.maxGain, step: 0.05)
+                .tint(engine.amplificationDB > 12 ? Theme.amber : Theme.mint)
+            Text(String(format: "%+0.1f dB", engine.amplificationDB))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(Theme.gainColor(engine.amplificationDB))
+                .frame(width: 64, alignment: .trailing)
+            Text(String(format: "×%.2f", engine.masterGain))
+                .font(.system(size: 10.5, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.4))
+                .frame(width: 44, alignment: .trailing)
+            Button {
+                withAnimation(.spring(duration: 0.25)) {
+                    engine.masterGain = 1.0
+                }
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(engine.masterGain == 1 ? 0.25 : 0.75))
+            }
+            .buttonStyle(.plain)
+            .disabled(engine.masterGain == 1)
+            .help("Reset the preamp to 0 dB")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.04)))
+    }
+}
+
+/// The 10 / 15 / 31 band choice. Shared by the faders and the response graph.
+struct BandCountPicker: View {
+    @EnvironmentObject private var engine: AudioEngine
+
+    var body: some View {
+        Picker("Bands", selection: selection) {
+            Text("10").tag(10)
+            Text("15").tag(15)
+            Text("31").tag(31)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 132)
+        .help("Number of bands")
+    }
+
+    private var selection: Binding<Int> {
+        Binding(
+            get: { engine.bands.count },
+            set: { newCount in
+                // Deferred: mutating engine state inside a binding setter runs
+                // during the view update, which SwiftUI warns about.
+                DispatchQueue.main.async { engine.setBandCount(newCount) }
+            }
+        )
     }
 }

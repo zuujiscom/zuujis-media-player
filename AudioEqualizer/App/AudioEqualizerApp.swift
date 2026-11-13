@@ -334,6 +334,7 @@ struct AudioEqualizerApp: App {
 
         Window("Visualizer", id: Self.visualizerWindowID) {
             VisualizerWindow()
+                .environmentObject(player)
                 .environmentObject(audioEngine)
                 .environmentObject(milkdropLibrary)
         }

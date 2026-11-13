@@ -11,6 +11,7 @@ import SwiftUI
 struct SpectrumView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
+    @EnvironmentObject private var player: PlayerEngine
     /// The ± dB span of the graph. Widens by itself when a band exceeds it.
     @AppStorage("eqGraphRange") private var rangeSetting = 12.0
     @State private var smoother = SpectrumSmoother()
@@ -43,6 +44,8 @@ struct SpectrumView: View {
                     infoChip(engine.outputFormat)
                 }
 
+                BandCountPicker()
+
                 Button {
                     rangeSetting = rangeSetting > 12 ? 12 : 24
                 } label: {
@@ -59,9 +62,11 @@ struct SpectrumView: View {
                 .help("Switch the graph between ±12 dB and ±24 dB")
             }
 
+            PreampRow()
+
             GeometryReader { geo in
                 let layout = GraphLayout(size: geo.size, range: range)
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !engine.isRunning)) { timeline in
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { timeline in
                     Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
                         render(&context, layout: layout, date: timeline.date)
                     }
@@ -130,14 +135,18 @@ struct SpectrumView: View {
         }
     }
 
+    /// Audio is flowing through something we meter: the system route, or the
+    /// file player (which meters its own output even with the engine off).
+    private var isLive: Bool { engine.isRunning || player.state == .playing }
+
     // MARK: Drawing
 
     private func render(_ context: inout GraphicsContext, layout: GraphLayout, date: Date) {
         let plot = layout.plot
         drawGrid(&context, layout: layout)
 
-        smoother.step(toward: meters.snapshot.spectrum, at: date, live: engine.isRunning)
-        if engine.isRunning {
+        smoother.step(toward: meters.snapshot.spectrum, at: date, live: isLive)
+        if isLive {
             drawSpectrum(&context, plot: plot)
         }
         drawCurve(&context, layout: layout)

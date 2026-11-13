@@ -1725,6 +1725,7 @@ private struct MetalVisualizerView: NSViewRepresentable {
 
 struct VisualizerWindow: View {
     @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var milkdropLibrary: MilkdropLibrary
     @AppStorage(VisualizerMode.storageKey) private var storedMode = VisualizerMode.auto.rawValue
     @AppStorage(MilkdropLibrary.selectionKey) private var storedMilkdrop = ""
@@ -1784,7 +1785,7 @@ struct VisualizerWindow: View {
                 .ignoresSafeArea()
             }
 
-            if !engine.isRunning {
+            if !engine.isRunning, player.state != .playing {
                 // Some modes leave a still picture in silence; dim it so the
                 // notice reads over whatever is there.
                 Color.black.opacity(0.6).ignoresSafeArea()
