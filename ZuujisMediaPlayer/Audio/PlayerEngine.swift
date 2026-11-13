@@ -443,6 +443,15 @@ final class PlayerEngine: ObservableObject {
         seek(to: currentTime() + seconds)
     }
 
+    /// How long after a frame is rendered it is heard: the output buffer and
+    /// the device's own delay (large on a wireless headset). Lyrics subtract it
+    /// so a line lights when it is heard, not when it is rendered.
+    var outputLatency: Double {
+        guard state == .playing, engine.isRunning else { return 0 }
+        let latency = engine.outputNode.presentationLatency
+        return latency.isFinite ? min(max(0, latency), 1.5) : 0
+    }
+
     /// Seconds into the current track. Polled by the UI rather than published:
     /// a published position would redraw every view that observes the player on
     /// each tick.

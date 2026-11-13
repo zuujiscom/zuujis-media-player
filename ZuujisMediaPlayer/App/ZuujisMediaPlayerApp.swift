@@ -294,6 +294,8 @@ struct ZuujisMediaPlayerApp: App {
                 Divider()
 
                 Toggle("Look Up Missing Lyrics Online (LRCLIB)", isOn: $lyrics.onlineLookup)
+                Button(lyrics.recheckStatus ?? "Re-check Saved Online Lyrics") { lyrics.recheckSaved() }
+                    .disabled(lyrics.recheckStatus != nil)
                 Toggle("Match Output Rate to Each Track", isOn: Binding(
                     get: { player.matchSampleRate }, set: { player.matchSampleRate = $0 }))
                 Toggle("Exclusive Output", isOn: Binding(

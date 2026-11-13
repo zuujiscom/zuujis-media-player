@@ -40,6 +40,7 @@ final class WidgetBridge {
             player.$speed.map { _ in () }.eraseToAnyPublisher(),
             player.timelineChanged.eraseToAnyPublisher(),
             lyrics.$lyrics.map { _ in () }.eraseToAnyPublisher(),
+            lyrics.$offset.map { _ in () }.eraseToAnyPublisher(),
             engine.$isRunning.map { _ in () }.eraseToAnyPublisher(),
             engine.$isBypassed.map { _ in () }.eraseToAnyPublisher(),
             engine.$masterGain.map { _ in () }.eraseToAnyPublisher(),
@@ -75,7 +76,10 @@ final class WidgetBridge {
         state.anchor = Date()
         state.speed = player.speed
         if let lines = lyrics.lyrics, lines.isSynced, lyrics.url == player.track?.url {
-            state.lyrics = lines.lines.compactMap { line in line.time.map { .init(t: $0, s: line.text) } }
+            // Line times in the widget's own clock: later by what the output
+            // adds, earlier by the song's adjustment.
+            let shift = player.outputLatency - lyrics.offset
+            state.lyrics = lines.lines.compactMap { line in line.time.map { .init(t: $0 + shift, s: line.text) } }
         }
         state.eqOn = engine.isRunning
         state.bypassed = engine.isBypassed

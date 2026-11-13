@@ -11,6 +11,7 @@ struct LyricsCard: View {
             HStack {
                 SectionTitle(text: "Lyrics", systemImage: "quote.bubble")
                 Spacer()
+                if store.lyrics?.isSynced == true { syncControl }
                 if let lyrics = store.lyrics {
                     Text(lyrics.isSynced ? "SYNCED" : "TEXT")
                         .font(.system(size: 9, weight: .heavy))
@@ -24,6 +25,36 @@ struct LyricsCard: View {
             LyricsBox(showsBadge: false)
         }
         .card()
+    }
+
+    /// − 0.0s + : shifts this song's lyrics, for a file whose timing is off.
+    private var syncControl: some View {
+        HStack(spacing: 4) {
+            nudge("minus", -0.5, help: "Show the lyrics later (they come too early)")
+            Button { store.resetOffset() } label: {
+                Text(String(format: "%+.1fs", store.offset))
+                    .font(.system(size: 10.5, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(store.offset == 0 ? Theme.ink.opacity(0.5) : Theme.amber)
+                    .frame(minWidth: 38)
+            }
+            .buttonStyle(.plain)
+            .help("This song's lyric timing. Click to reset.")
+            nudge("plus", 0.5, help: "Show the lyrics sooner (they come too late)")
+        }
+        .padding(.horizontal, 4)
+        .background(Capsule().fill(Theme.ink.opacity(0.06)))
+    }
+
+    private func nudge(_ symbol: String, _ seconds: Double, help: String) -> some View {
+        Button { store.nudge(by: seconds) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Theme.ink.opacity(0.7))
+                .frame(width: 20, height: 20)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 
@@ -55,17 +86,18 @@ struct LyricsBox: View {
         .overlay(alignment: .topTrailing) { if showsBadge { badge } }
         .onAppear(perform: update)
         .onChange(of: store.lyrics) { _, _ in current = nil; update() }
+        .onChange(of: store.offset) { _, _ in update() }
         .onReceive(player.timelineChanged) { update() }
         // The line only needs checking while the song moves; seeks and
         // speed changes arrive through `timelineChanged`.
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
             if player.state == .playing { update() }
         }
     }
 
     private func update() {
         guard let lyrics = store.lyrics, lyrics.isSynced else { if current != nil { current = nil }; return }
-        let index = lyrics.currentIndex(at: player.currentTime())
+        let index = lyrics.currentIndex(at: store.time(for: player))
         if index != current { current = index }
     }
 

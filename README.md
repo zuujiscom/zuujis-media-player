@@ -229,7 +229,19 @@ from your own files and nothing is looked up online.
    song's title, artist, album and length are sent to lrclib.net. It prefers
    synced lyrics. A hit is saved in `~/Library/Application Support/Zuujis Media
    Player/Lyrics/` (never beside your music), so each song is asked about once.
-   Songs need a title and artist in their tags.
+   Songs need a title and artist in their tags. A song comes in several cuts
+   (radio edit, album, extended) with different timing, so only a version whose
+   length is within 8 seconds of your file is used as synced lyrics, preferring
+   the one for the same album. **Playback → Re-check Saved Online Lyrics** asks
+   again for every saved song and keeps the best match; lyrics saved by an older
+   version are cleared and fetched afresh when the song next plays.
+
+**Timing.** A line lights when you *hear* it: the app subtracts the output
+device's own delay (large on a wireless headset). If a file's timing is still
+off, which happens with lyrics made for another version of the song, the
+**− / +** control in the lyrics header shifts that song by half a second per
+click (**+** shows lines sooner, **−** later; click the value to reset). It is
+remembered per song and also applies to the menu bar and the widgets.
 
 With none of these the box says so. A synced lyric also shows in the menu bar
 window.

@@ -19,7 +19,7 @@ struct MenuBarPlayer: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var queue: PlaybackQueue
     @EnvironmentObject private var engine: AudioEngine
-    @EnvironmentObject private var lyrics: LyricsStore
+    @EnvironmentObject private var store: LyricsStore
     @EnvironmentObject private var login: LaunchAtLogin
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
@@ -107,8 +107,8 @@ struct MenuBarPlayer: View {
 
     /// The lyric being sung, when there are synced lyrics.
     private func updateLine() {
-        guard let lyrics = lyrics.lyrics, lyrics.isSynced,
-              let index = lyrics.currentIndex(at: player.currentTime()) else {
+        guard let lyrics = store.lyrics, lyrics.isSynced,
+              let index = lyrics.currentIndex(at: store.time(for: player)) else {
             if line != nil { line = nil }
             return
         }
