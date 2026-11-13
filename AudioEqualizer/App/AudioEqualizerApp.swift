@@ -48,6 +48,7 @@ struct AudioEqualizerApp: App {
     @StateObject private var milkdropLibrary = MilkdropLibrary()
     @StateObject private var player = PlayerEngine()
     @StateObject private var library = LibraryStore()
+    @StateObject private var playlists = PlaylistStore()
 
     var body: some Scene {
         WindowGroup {
@@ -55,6 +56,7 @@ struct AudioEqualizerApp: App {
                 .environmentObject(player)
                 .environmentObject(player.queue)
                 .environmentObject(library)
+                .environmentObject(playlists)
                 .environmentObject(audioEngine)
                 .environmentObject(audioEngine.meters)
                 .environmentObject(presetManager)
@@ -174,12 +176,12 @@ struct AudioEqualizerApp: App {
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
 
-                Button("Add to Playlist…") {
+                Button("Add to Queue…") {
                     PlayerActions.addToPlaylist(in: player)
                 }
                 .keyboardShortcut("o", modifiers: [.command, .option])
 
-                Button("Show Playlist") {
+                Button("Show Queue") {
                     openWindow(id: Self.playlistWindowID)
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
@@ -242,7 +244,7 @@ struct AudioEqualizerApp: App {
                 Picker("Repeat", selection: Binding(get: { player.queue.repeatMode },
                                                     set: { player.queue.repeatMode = $0 })) {
                     Text("Off").tag(PlaybackQueue.Repeat.off)
-                    Text("Playlist").tag(PlaybackQueue.Repeat.all)
+                    Text("Queue").tag(PlaybackQueue.Repeat.all)
                     Text("Track").tag(PlaybackQueue.Repeat.one)
                 }
             }
@@ -340,8 +342,9 @@ struct AudioEqualizerApp: App {
         }
         .defaultSize(width: 1100, height: 680)
 
-        Window("Playlist", id: Self.playlistWindowID) {
+        Window("Queue", id: Self.playlistWindowID) {
             PlaylistView()
+                .environmentObject(playlists)
                 .environmentObject(player)
                 .environmentObject(player.queue)
         }

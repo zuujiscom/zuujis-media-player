@@ -20,6 +20,7 @@ struct LibraryTrack: Identifiable, Codable, Equatable, Hashable {
     var id: String { url.path }
     var artistName: String { artist ?? LibraryModel.unknownArtist }
     var albumName: String { album ?? LibraryModel.unknownAlbum }
+    var genreName: String { genre ?? LibraryModel.unknownGenre }
 }
 
 /// A user's change to a song's tags. Kept beside the library rather than
@@ -69,6 +70,29 @@ struct TagEdit: Codable, Equatable {
 enum LibraryModel {
     static let unknownArtist = "Unknown Artist"
     static let unknownAlbum = "Unknown Album"
+    static let unknownGenre = "No Genre"
+
+    struct Genre: Identifiable, Hashable {
+        var name: String
+        var trackCount: Int
+        var id: String { name }
+    }
+
+    /// Genres in the library, A to Z, with songs that have none grouped last.
+    static func genres(_ tracks: [LibraryTrack]) -> [Genre] {
+        Dictionary(grouping: tracks, by: \.genreName)
+            .map { Genre(name: $0.key, trackCount: $0.value.count) }
+            .sorted { a, b in
+                if (a.name == unknownGenre) != (b.name == unknownGenre) { return b.name == unknownGenre }
+                return ordered(a.name, b.name)
+            }
+    }
+
+    /// The songs in `genre`, or all of them when it is nil.
+    static func songs(_ tracks: [LibraryTrack], inGenre genre: String?) -> [LibraryTrack] {
+        guard let genre else { return tracks }
+        return tracks.filter { $0.genreName == genre }
+    }
 
     /// Everything `AVAudioFile` decodes natively.
     static let audioExtensions: Set<String> = [
@@ -98,7 +122,7 @@ enum LibraryModel {
         return folded
     }
 
-    private static func ordered(_ a: String, _ b: String) -> Bool {
+    static func ordered(_ a: String, _ b: String) -> Bool {
         sortKey(a).localizedStandardCompare(sortKey(b)) == .orderedAscending
     }
 

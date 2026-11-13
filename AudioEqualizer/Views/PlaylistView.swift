@@ -7,6 +7,8 @@ import SwiftUI
 struct PlaylistView: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var queue: PlaybackQueue
+    @EnvironmentObject private var playlists: PlaylistStore
+    @State private var namePrompt: NamePrompt?
 
     @State private var selection = Set<QueueItem.ID>()
     @State private var search = ""
@@ -35,6 +37,7 @@ struct PlaylistView: View {
         .frame(minWidth: 460, minHeight: 360)
         .background(AmbientBackground().ignoresSafeArea())
         .preferredColorScheme(Theme.scheme)
+        .sheet(item: $namePrompt) { NameSheet(prompt: $0) }
         // Dropping files or folders here adds them to the end.
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
@@ -49,7 +52,7 @@ struct PlaylistView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("Playlist")
+                Text("Queue")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 Text(summary)
@@ -79,7 +82,22 @@ struct PlaylistView: View {
                     .pill()
             }
             .buttonStyle(.plain)
-            .help("Add files or folders to the end of the playlist")
+            .help("Add files or folders to the end of the queue")
+
+            Button {
+                let paths = queue.items.map { $0.url.path }
+                namePrompt = NamePrompt(title: "Save Queue as Playlist",
+                                        message: "\(paths.count) songs will be saved.",
+                                        initial: "", confirm: "Save") { playlists.create(name: $0, paths: paths) }
+            } label: {
+                Label("Save", systemImage: "text.badge.plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.85))
+                    .pill()
+            }
+            .buttonStyle(.plain)
+            .disabled(queue.items.isEmpty)
+            .help("Save the queue as a playlist")
 
             Button {
                 queue.clear()
@@ -92,7 +110,7 @@ struct PlaylistView: View {
             }
             .buttonStyle(.plain)
             .disabled(queue.items.isEmpty)
-            .help("Clear the playlist")
+            .help("Clear the queue")
         }
         .padding(.horizontal, 14)
         .frame(height: 52)
@@ -137,7 +155,7 @@ struct PlaylistView: View {
                 Button("Play") { player.play(id) }
             }
             if !ids.isEmpty {
-                Button("Remove from Playlist", role: .destructive) { queue.remove(ids) }
+                Button("Remove from Queue", role: .destructive) { queue.remove(ids) }
             }
         } primaryAction: { ids in
             // Double-click.
@@ -154,7 +172,7 @@ struct PlaylistView: View {
             Image(systemName: "music.note.list")
                 .font(.system(size: 34))
                 .foregroundStyle(Theme.ink.opacity(0.3))
-            Text("The playlist is empty")
+            Text("The queue is empty")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.ink.opacity(0.8))
             Text("Drop audio files or a folder here, or use Add.")

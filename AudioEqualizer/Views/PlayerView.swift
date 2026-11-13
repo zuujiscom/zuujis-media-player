@@ -69,7 +69,7 @@ struct PlayerBar: View {
                     .pill()
             }
             .buttonStyle(.plain)
-            .help("Show the playlist  (⇧⌘L)")
+            .help("Show the queue  (⇧⌘L)")
 
             Button {
                 PlayerActions.openFiles(in: player)
@@ -200,7 +200,7 @@ struct PlayerBar: View {
             .help({
                 switch queue.repeatMode {
                 case .off: return "Repeat is off"
-                case .all: return "Repeating the playlist"
+                case .all: return "Repeating the queue"
                 case .one: return "Repeating this track"
                 }
             }())
@@ -284,7 +284,7 @@ enum PlayerActions {
 
     /// Appends to the playlist without interrupting playback.
     static func addToPlaylist(in player: PlayerEngine) {
-        choose(message: "Choose audio files, or a folder of them, to add to the playlist.") { urls in
+        choose(message: "Choose audio files, or a folder of them, to add to the queue.") { urls in
             player.enqueue(urls)
         }
     }

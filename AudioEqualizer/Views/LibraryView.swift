@@ -2,38 +2,72 @@
 
 import SwiftUI
 
-/// The music library browser: artists, their albums, and the songs under the
-/// current choice. Double-click a song to play it with the songs around it as
-/// the playlist; right-click for play and add.
+/// The music library browser: by artist, by genre, or by saved playlist, and
+/// the songs under the current choice. Double-click a song to play it with the
+/// songs around it as the queue; right-click for play, queue, playlists and
+/// tag editing.
 struct LibraryView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var queue: PlaybackQueue
+    @EnvironmentObject private var playlists: PlaylistStore
 
+    enum Browse: String { case artists, genres, playlists }
+
+    @AppStorage("libraryBrowse") private var browseRaw = Browse.artists.rawValue
+    @AppStorage("libraryWriteTagsToFiles") private var writeToFiles = true
+    private var browse: Browse { Browse(rawValue: browseRaw) ?? .artists }
+
+    @State private var genre: String?
     @State private var artist: String?
     @State private var album: LibraryModel.Album?
+    @State private var playlistID: UUID?
     @State private var search = ""
     @State private var editing: EditTarget?
+    @State private var namePrompt: NamePrompt?
+    @State private var deleting: Playlist?
+    @State private var notice: String?
 
     // Grouping a few thousand tracks is cheap but not free; redo it when the
     // library, the choice or the search changes, not on every redraw.
+    @State private var genres: [LibraryModel.Genre] = []
     @State private var artists: [LibraryModel.Artist] = []
     @State private var albums: [LibraryModel.Album] = []
     @State private var songs: [LibraryTrack] = []
+    @State private var byPath: [String: LibraryTrack] = [:]
+
+    /// Dragging a song onto a playlist carries its path with this prefix.
+    static let dragPrefix = "ae2track:"
 
     var body: some View {
         VStack(spacing: 10) {
             header
 
-            if library.folders.isEmpty {
+            if library.folders.isEmpty, browse != .playlists {
                 emptyState
             } else {
                 HStack(spacing: 10) {
-                    column(title: "Artists", count: artists.count) { artistList }
-                        .frame(width: 210)
-                    column(title: "Albums", count: albums.count) { albumList }
-                        .frame(width: 250)
-                    column(title: "Songs", count: songs.count) { songList }
+                    switch browse {
+                    case .artists:
+                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 210)
+                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 250)
+                        column(title: "Songs", count: songs.count) { songList }
+                    case .genres:
+                        column(title: "Genres", count: genres.count) { genreList }.frame(width: 160)
+                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 190)
+                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 210)
+                        column(title: "Songs", count: songs.count) { songList }
+                    case .playlists:
+                        column(title: "Playlists", count: playlists.playlists.count, accessory: {
+                            Button { newPlaylist(with: []) } label: {
+                                Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.ink.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
+                            .help("New playlist")
+                        }) { playlistList }.frame(width: 230)
+                        column(title: "Songs", count: currentPlaylist?.paths.count ?? 0) { playlistSongList }
+                    }
                 }
                 // Fixed height: each column scrolls inside it instead of the
                 // card growing to fit a long list.
@@ -43,12 +77,31 @@ struct LibraryView: View {
         .card()
         .onAppear(perform: refresh)
         .onChange(of: library.tracks) { _, _ in refresh() }
+        .onChange(of: browseRaw) { _, _ in album = nil; refresh() }
+        .onChange(of: genre) { _, _ in artist = nil; album = nil; refresh() }
         .onChange(of: artist) { _, _ in album = nil; refresh() }
         .onChange(of: album) { _, _ in refreshSongs() }
         .onChange(of: search) { _, _ in refresh() }
         .sheet(item: $editing) { target in
-            EditTagsSheet(target: target) { edit, write in library.apply(edit, to: target.tracks, writeToFiles: write) }
+            EditTagsSheet(target: target) { edit, write in
+                library.apply(edit, to: target.tracks, writeToFiles: write)
+                // Keep the selection on an artist that was just renamed.
+                if let old = target.artistName, artist == old, let new = edit.artist {
+                    artist = new.isEmpty ? nil : new
+                }
+            }
         }
+        .sheet(item: $namePrompt) { prompt in NameSheet(prompt: prompt) }
+        .confirmationDialog("Delete \"\(deleting?.name ?? "")\"?", isPresented: Binding(
+            get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button("Delete Playlist", role: .destructive) {
+                if let list = deleting {
+                    if playlistID == list.id { playlistID = nil }
+                    playlists.delete(list.id)
+                }
+                deleting = nil
+            }
+        } message: { Text("The songs themselves are not deleted.") }
         .alert("Some changes were not written to files", isPresented: Binding(
             get: { library.writeReport != nil }, set: { if !$0 { library.writeReport = nil } })) {
             Button("OK") { library.writeReport = nil }
@@ -66,22 +119,35 @@ struct LibraryView: View {
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.2)
                 .foregroundStyle(Theme.ink.opacity(0.85))
-            Text(status)
+
+            Picker("Browse by", selection: $browseRaw) {
+                Text("Artists").tag(Browse.artists.rawValue)
+                Text("Genres").tag(Browse.genres.rawValue)
+                Text("Playlists").tag(Browse.playlists.rawValue)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 240)
+
+            Text(notice ?? status)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.ink.opacity(0.45))
+                .foregroundStyle(notice == nil ? Theme.ink.opacity(0.45) : Theme.mint)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.ink.opacity(0.45))
-                TextField("Search songs, artists, albums", text: $search)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .frame(width: 190)
+            if browse != .playlists {
+                HStack(spacing: 5) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.ink.opacity(0.45))
+                    TextField("Search", text: $search)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .frame(width: 130)
+                }
+                .pill()
             }
-            .pill()
 
             Menu {
                 Button("Add Music Folder…") { addFolder() }
@@ -154,13 +220,21 @@ struct LibraryView: View {
 
     // MARK: Columns
 
-    private func column<Content: View>(title: String, count: Int, @ViewBuilder content: () -> Content) -> some View {
+    private func column<Content: View, Accessory: View>(
+        title: String, count: Int,
+        @ViewBuilder accessory: () -> Accessory,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(title.uppercased())  \(count)")
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.8)
-                .foregroundStyle(Theme.ink.opacity(0.4))
-                .padding(.horizontal, 4)
+            HStack {
+                Text("\(title.uppercased())  \(count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.ink.opacity(0.4))
+                Spacer(minLength: 0)
+                accessory()
+            }
+            .padding(.horizontal, 4)
             ScrollView {
                 LazyVStack(spacing: 1) { content() }
                     .padding(4)
@@ -170,18 +244,52 @@ struct LibraryView: View {
         }
     }
 
+    private func column<Content: View>(title: String, count: Int, @ViewBuilder content: () -> Content) -> some View {
+        column(title: title, count: count, accessory: { EmptyView() }, content: content)
+    }
+
+    // MARK: Genres
+
+    private var genreList: some View {
+        Group {
+            row("All Genres", detail: "\(library.tracks.count)", selected: genre == nil) { genre = nil }
+            ForEach(genres) { entry in
+                row(entry.name, detail: "\(entry.trackCount)", selected: genre == entry.name) { genre = entry.name }
+                    .contextMenu {
+                        let tracks = LibraryModel.songs(library.tracks, inGenre: entry.name)
+                        Button("Play All \(entry.name)") { play(tracks) }
+                        Button("Add to Queue") { enqueue(tracks) }
+                        addToPlaylistMenu { tracks }
+                        if entry.name != LibraryModel.unknownGenre {
+                            Divider()
+                            Button("Rename Genre…") {
+                                namePrompt = NamePrompt(title: "Rename Genre", message: "Applies to \(tracks.count) songs.",
+                                                        initial: entry.name, confirm: "Rename") { name in
+                                    setGenre(name, on: tracks)
+                                    if genre == entry.name { genre = name.isEmpty ? nil : name }
+                                }
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    // MARK: Artists and albums
+
     private var artistList: some View {
         Group {
-            row("All Artists", detail: "\(library.tracks.count)", selected: artist == nil) { artist = nil }
+            row("All Artists", detail: "\(scoped.count)", selected: artist == nil) { artist = nil }
             ForEach(artists) { entry in
                 row(entry.name, detail: "\(entry.trackCount)", selected: artist == entry.name) { artist = entry.name }
                     .contextMenu {
-                        Button("Play All by \(entry.name)") { play(LibraryModel.songs(library.tracks, artist: entry.name, album: nil)) }
-                        Button("Add to Playlist") { enqueue(LibraryModel.songs(library.tracks, artist: entry.name, album: nil)) }
+                        let tracks = LibraryModel.songs(scoped, artist: entry.name, album: nil)
+                        Button("Play All by \(entry.name)") { play(tracks) }
+                        Button("Add to Queue") { enqueue(tracks) }
+                        addToPlaylistMenu(suggestion: entry.name) { tracks }
                         Divider()
-                        Button("Edit Info…") {
-                            edit(LibraryModel.songs(library.tracks, artist: entry.name, album: nil), "Artist: \(entry.name)")
-                        }
+                        Button("Edit Info…") { edit(tracks, "Artist: \(entry.name)", artist: entry.name) }
+                        genreMenu { tracks }
                     }
             }
         }
@@ -196,16 +304,19 @@ struct LibraryView: View {
                     subtitle: artist == nil ? entry.artist : nil,
                     selected: album == entry) { album = entry }
                     .contextMenu {
-                        Button("Play Album") { play(LibraryModel.songs(library.tracks, artist: entry.artist, album: entry)) }
-                        Button("Add to Playlist") { enqueue(LibraryModel.songs(library.tracks, artist: entry.artist, album: entry)) }
+                        let tracks = LibraryModel.songs(scoped, artist: entry.artist, album: entry)
+                        Button("Play Album") { play(tracks) }
+                        Button("Add to Queue") { enqueue(tracks) }
+                        addToPlaylistMenu(suggestion: entry.name) { tracks }
                         Divider()
-                        Button("Edit Info…") {
-                            edit(LibraryModel.songs(library.tracks, artist: entry.artist, album: entry), "Album: \(entry.name)")
-                        }
+                        Button("Edit Info…") { edit(tracks, "Album: \(entry.name)") }
+                        genreMenu { tracks }
                     }
             }
         }
     }
+
+    // MARK: Songs
 
     private var songList: some View {
         let playing = queue.current?.url
@@ -246,15 +357,214 @@ struct LibraryView: View {
             .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Theme.ink.opacity(0.06) : .clear))
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.play(urls: songs.map(\.url), startingAt: index) }
+            .draggable(Self.dragPrefix + song.id)
             .contextMenu {
                 Button("Play") { player.play(urls: songs.map(\.url), startingAt: index) }
-                Button("Add to Playlist") { player.enqueue([song.url]) }
+                Button("Add to Queue") { player.enqueue([song.url]) }
+                addToPlaylistMenu(suggestion: song.title) { [song] }
                 Divider()
                 Button("Edit Info…") { edit([song], song.title) }
+                genreMenu { [song] }
                 if library.isEdited(song) {
                     Button("Revert Library Edits") { library.resetEdits(for: [song]) }
                 }
             }
+        }
+    }
+
+    // MARK: Playlists
+
+    private var currentPlaylist: Playlist? { playlists.playlist(playlistID) }
+
+    private var playlistList: some View {
+        Group {
+            if playlists.playlists.isEmpty {
+                Text("No playlists yet. Use + above, or right-click a song, album, artist or genre and choose Add to Playlist.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink.opacity(0.4))
+                    .padding(8)
+            }
+            ForEach(playlists.playlists) { list in
+                row(list.name, detail: "\(list.paths.count)", selected: playlistID == list.id) { playlistID = list.id }
+                    .dropDestination(for: String.self) { items, _ in
+                        let paths = items.compactMap(Self.path(fromDrag:))
+                        guard !paths.isEmpty else { return false }
+                        addToPlaylist(paths, list.id)
+                        return true
+                    }
+                    .contextMenu {
+                        let urls = list.paths.map { URL(fileURLWithPath: $0) }
+                        Button("Play") { if !urls.isEmpty { player.play(urls: urls, startingAt: 0) } }
+                            .disabled(urls.isEmpty)
+                        Button("Add to Queue") { player.enqueue(urls) }
+                            .disabled(urls.isEmpty)
+                        Divider()
+                        Button("Rename…") {
+                            namePrompt = NamePrompt(title: "Rename Playlist", message: nil, initial: list.name,
+                                                    confirm: "Rename") { playlists.rename(list.id, to: $0) }
+                        }
+                        Button("Duplicate") {
+                            playlistID = playlists.create(name: list.name + " copy", paths: list.paths).id
+                        }
+                        Divider()
+                        Button("Delete Playlist…", role: .destructive) { deleting = list }
+                    }
+            }
+        }
+    }
+
+    private var playlistSongList: some View {
+        Group {
+            if let list = currentPlaylist {
+                if list.paths.isEmpty {
+                    Text("Empty. Add songs from the Artists or Genres view, or drag them onto this playlist.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.ink.opacity(0.4))
+                        .padding(8)
+                }
+                let playable = list.paths.filter { FileManager.default.fileExists(atPath: $0) }
+                ForEach(Array(list.paths.enumerated()), id: \.element) { index, path in
+                    playlistSongRow(path: path, index: index, list: list, playable: playable)
+                }
+            } else {
+                Text(playlists.playlists.isEmpty ? "" : "Choose a playlist.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink.opacity(0.4))
+                    .padding(8)
+            }
+        }
+    }
+
+    private func playlistSongRow(path: String, index: Int, list: Playlist, playable: [String]) -> some View {
+        let track = byPath[path]
+        let isCurrent = queue.current?.url.path == path
+        let exists = playable.contains(path)
+        let title = track?.title ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        return HStack(spacing: 8) {
+            Group {
+                if isCurrent {
+                    Image(systemName: player.state == .playing ? "speaker.wave.2.fill" : "speaker.fill")
+                        .foregroundStyle(Theme.cyan)
+                } else {
+                    Text("\(index + 1)").foregroundStyle(Theme.ink.opacity(0.35))
+                }
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .frame(width: 22, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                    .foregroundStyle(isCurrent ? Theme.cyan : Theme.ink.opacity(exists ? 0.88 : 0.4))
+                    .lineLimit(1)
+                Text(exists ? (track.map { "\($0.artistName) · \($0.albumName)" } ?? "") : "File not found (drive offline?)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(exists ? Theme.ink.opacity(0.4) : Theme.amber.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Text(Self.time(track?.duration))
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(Theme.ink.opacity(0.4))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Theme.ink.opacity(0.06) : .clear))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard exists, let start = playable.firstIndex(of: path) else { return }
+            player.play(urls: playable.map { URL(fileURLWithPath: $0) }, startingAt: start)
+        }
+        .draggable(Self.dragPrefix + path)
+        // Dropping a song here puts it just before this one.
+        .dropDestination(for: String.self) { items, _ in
+            let paths = items.compactMap(Self.path(fromDrag:))
+            guard !paths.isEmpty else { return false }
+            for dropped in paths {
+                playlists.add([dropped], to: list.id)
+                playlists.move(dropped, before: path, in: list.id)
+            }
+            return true
+        }
+        .contextMenu {
+            Button("Play") {
+                guard exists, let start = playable.firstIndex(of: path) else { return }
+                player.play(urls: playable.map { URL(fileURLWithPath: $0) }, startingAt: start)
+            }
+            .disabled(!exists)
+            Button("Add to Queue") { player.enqueue([URL(fileURLWithPath: path)]) }
+                .disabled(!exists)
+            Divider()
+            Button("Move Up") { playlists.nudge(path, by: -1, in: list.id) }.disabled(index == 0)
+            Button("Move Down") { playlists.nudge(path, by: 1, in: list.id) }.disabled(index == list.paths.count - 1)
+            if let track {
+                Divider()
+                Button("Edit Info…") { edit([track], track.title) }
+            }
+            Divider()
+            Button("Remove from Playlist", role: .destructive) { playlists.remove([path], from: list.id) }
+        }
+    }
+
+    private static func path(fromDrag item: String) -> String? {
+        item.hasPrefix(dragPrefix) ? String(item.dropFirst(dragPrefix.count)) : nil
+    }
+
+    // MARK: Menus
+
+    /// "Add to Playlist ▸": new playlist, then each existing one.
+    private func addToPlaylistMenu(suggestion: String = "", tracks: @escaping () -> [LibraryTrack]) -> some View {
+        Menu("Add to Playlist") {
+            Button("New Playlist…") { newPlaylist(with: tracks(), suggestion: suggestion) }
+            if !playlists.playlists.isEmpty { Divider() }
+            ForEach(playlists.playlists) { list in
+                Button(list.name) { addToPlaylist(tracks().map(\.id), list.id) }
+            }
+        }
+    }
+
+    /// "Set Genre ▸": the genres already in the library, a new one, or none.
+    private func genreMenu(tracks: @escaping () -> [LibraryTrack]) -> some View {
+        Menu("Set Genre") {
+            ForEach(genres.filter { $0.name != LibraryModel.unknownGenre }) { entry in
+                Button(entry.name) { setGenre(entry.name, on: tracks()) }
+            }
+            Divider()
+            Button("New Genre…") {
+                namePrompt = NamePrompt(title: "New Genre", message: nil, initial: "", confirm: "Set") { name in
+                    setGenre(name, on: tracks())
+                }
+            }
+            Button("Clear Genre") { setGenre("", on: tracks()) }
+        }
+    }
+
+    private func setGenre(_ name: String, on tracks: [LibraryTrack]) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tracks.isEmpty else { return }
+        library.apply(TagEdit(genre: trimmed), to: tracks, writeToFiles: writeToFiles)
+    }
+
+    private func newPlaylist(with tracks: [LibraryTrack], suggestion: String = "") {
+        namePrompt = NamePrompt(title: "New Playlist",
+                                message: tracks.isEmpty ? nil : "\(tracks.count) song\(tracks.count == 1 ? "" : "s") will be added.",
+                                initial: suggestion, confirm: "Create") { name in
+            let list = playlists.create(name: name, paths: tracks.map(\.id))
+            playlistID = list.id
+            flash("Created \(list.name)")
+        }
+    }
+
+    private func addToPlaylist(_ paths: [String], _ id: UUID) {
+        guard !paths.isEmpty, let list = playlists.playlist(id) else { return }
+        let added = playlists.add(paths, to: id)
+        flash(added == 0 ? "Already in \(list.name)" : "Added \(added) song\(added == 1 ? "" : "s") to \(list.name)")
+    }
+
+    private func flash(_ text: String) {
+        notice = text
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if notice == text { notice = nil }
         }
     }
 
@@ -290,21 +600,30 @@ struct LibraryView: View {
 
     // MARK: Actions
 
+    /// The library narrowed to the chosen genre (in the Genres view).
+    private var scoped: [LibraryTrack] {
+        LibraryModel.songs(library.tracks, inGenre: browse == .genres ? genre : nil)
+    }
+
     private func refresh() {
-        artists = LibraryModel.artists(library.tracks)
+        byPath = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        genres = LibraryModel.genres(library.tracks)
+        if let genre, !genres.contains(where: { $0.name == genre }) { self.genre = nil }
+        let pool = scoped
+        artists = LibraryModel.artists(pool)
         if let artist, !artists.contains(where: { $0.name == artist }) { self.artist = nil }
-        albums = LibraryModel.albums(library.tracks, artist: artist)
+        albums = LibraryModel.albums(pool, artist: artist)
         if let album, !albums.contains(album) { self.album = nil }
         refreshSongs()
     }
 
     private func refreshSongs() {
-        songs = LibraryModel.songs(library.tracks, artist: artist, album: album, search: search)
+        songs = LibraryModel.songs(scoped, artist: artist, album: album, search: search)
     }
 
-    private func edit(_ tracks: [LibraryTrack], _ title: String) {
+    private func edit(_ tracks: [LibraryTrack], _ title: String, artist: String? = nil) {
         guard !tracks.isEmpty else { return }
-        editing = EditTarget(tracks: tracks, title: title)
+        editing = EditTarget(tracks: tracks, title: title, artistName: artist)
     }
 
     private func play(_ tracks: [LibraryTrack]) {
@@ -336,10 +655,54 @@ struct LibraryView: View {
     }
 }
 
+/// A one-line text prompt: new playlist, rename, new genre.
+struct NamePrompt: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String?
+    var initial: String
+    var confirm: String
+    var action: (String) -> Void
+}
+
+struct NameSheet: View {
+    let prompt: NamePrompt
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(prompt.title).font(.headline)
+            if let message = prompt.message {
+                Text(message).font(.caption).foregroundStyle(.secondary)
+            }
+            TextField("Name", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(done)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(prompt.confirm, action: done).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 340)
+        .preferredColorScheme(Theme.scheme)
+        .onAppear { text = prompt.initial }
+    }
+
+    private func done() {
+        prompt.action(text)
+        dismiss()
+    }
+}
+
 struct EditTarget: Identifiable {
     let id = UUID()
     var tracks: [LibraryTrack]
     var title: String
+    /// Set when the whole artist is being edited, so a rename can keep it selected.
+    var artistName: String?
 }
 
 /// Edits tags for one song, or for a whole album or artist at once. With

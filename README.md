@@ -16,7 +16,7 @@ no virtual audio driver to install.
   across it to draw the curve you want; double-click a band to reset it.
 - **Bypass** (⌘B) to compare the sound with and without the EQ.
 - **A built-in file player** for lossless audio (FLAC, ALAC, WAV, AIFF) and
-  MP3/AAC, with a playlist, gapless playback and Now Playing, played through
+  MP3/AAC, with a queue, saved playlists, gapless playback and Now Playing, played through
   the same EQ.
 - **A visualizer window** with 50 audio-driven modes — fractals, a raymarched
   skyline, ridgelines, a retro sunset, particle swarms and more — a shuffle
@@ -52,7 +52,8 @@ background service. The app only runs while you have it open.
 - **Your presets, device profiles and imported MilkDrop presets** in
   `~/Library/Application Support/AudioEqualizer/`.
 - **Your music library** (the folders you added and the tags read from them)
-  in `library.json` in the same folder. Your music files stay where they are.
+  in `library.json`, and your saved playlists in `playlists.json`, in the same
+  folder. Your music files stay where they are.
 - **Its settings** (master gain, visualizer choices, whether device profiles
   are on) in its preferences file,
   `~/Library/Preferences/com.zuujis.AudioEqualizer.plist`.
@@ -116,8 +117,8 @@ shape it, and the **power button switches the EQ on and off**, so with the
 engine off the player plays flat. It uses its own audio path, separate from the
 system route, so it never processes your other audio twice.
 
-- **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the playlist and
-  plays; **Add to Playlist…** (⌥⌘O) appends. **Show Playlist** is ⇧⌘L.
+- **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the queue and
+  plays; **Add to Queue…** (⌥⌘O) appends. **Show Queue** is ⇧⌘L.
 - Keys: **Space** play/pause (main window), **⌘→ / ⌘←** next and previous,
   **⌥⌘→ / ⌥⌘←** forward and back 10 seconds, **⌘↑ / ⌘↓** player volume,
   **⌘.** stop.
@@ -136,7 +137,8 @@ system route, so it never processes your other audio twice.
 
 ### Library
 
-The **Library** card browses your music by artist, album and song. Add folders
+The **Library** card browses your music by artist, by genre, or by saved
+playlist (the switch in its header), down to the songs. Add folders
 with **Add Music Folder…** (or **Folders** in the card); folders on external
 drives work too, and stay listed, marked offline, while the drive is unplugged.
 
@@ -144,9 +146,13 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   macOS ignores them). Later launches re-read only files that are new or have
   changed.
 - Click an artist, then an album. Double-click a song to play it with the
-  songs around it as the playlist. Right-click for **Play**, **Play Album**
-  and **Add to Playlist**. The search box matches title, artist, album and
-  genre.
+  songs around it as the queue. Right-click for **Play**, **Add to Queue**,
+  **Add to Playlist**, **Edit Info…** and **Set Genre**. The search box matches
+  title, artist, album and genre.
+- **Genres** view: pick a genre to narrow the artists, albums and songs to it.
+  Songs with no genre are grouped last as *No Genre*. Right-click a genre to
+  rename it for all its songs. The first launch after this was added re-reads
+  every file's tags once to fill genres in.
 - The buttons in the header show or hide the Library and choose the EQ view.
 - The palette button in the header picks a colour theme: Midnight (default), Light, Graphite, Black, Ocean, Forest, Ember or Orchid. The choice is remembered. The Visualizer window stays dark.
   The **Response graph** and the **Equalizer faders** are one or the other:
@@ -156,7 +162,17 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   button is off (the faders and graph then show the curve you have set, but the
   player plays flat).
 
-**Editing tags.** Right-click a song, album or artist and choose **Edit Info…**
+**Playlists.** In the **Playlists** view, **+** makes a playlist; right-click
+one to play, queue, rename, duplicate or delete it (deleting never touches the
+songs). Right-click a song, album, artist or genre and choose **Add to
+Playlist ▸ New Playlist…** or an existing one, or drag a song onto a playlist.
+Inside a playlist, drag songs to reorder or use **Move Up / Move Down**, and
+**Remove from Playlist**. A song already in a playlist is not added twice. A
+song whose drive is unplugged keeps its place, marked *File not found*. The
+**Queue** window's **Save** button turns the current queue into a playlist.
+
+**Editing tags.** Right-click a song, album or artist and choose **Edit Info…** (or **Set Genre**
+for just the genre)
 to change title, artist, album, genre, year, track and disc. On an album or
 artist the change applies to every song in it, and only the fields you edit
 are touched. With **Write changes into the audio files** on (the default),
@@ -164,7 +180,7 @@ FLAC and MP3 files are updated, so other apps see the changes; the audio
 itself is not touched. Other formats, and any file that cannot be written
 (read-only or unplugged drive), keep the change in the library only, and an
 alert says which. Turn the toggle off to keep every edit in the library only;
-**Revert Library Edits** undoes those. The playlist shows a file's tags as
+**Revert Library Edits** undoes those. The queue shows a file's tags as
 they were when it was loaded, so it may lag an edit until the song is reloaded.
 Try it on a copy first if the files matter.
 

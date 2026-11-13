@@ -274,7 +274,11 @@ final class LibraryStore: ObservableObject {
         var folders: [URL]
         var tracks: [LibraryTrack]
         var edits: [String: TagEdit]?
+        /// 2 = tracks carry a genre. An older file is re-read once to fill it in.
+        var schema: Int?
     }
+
+    private static let schema = 2
 
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),
@@ -282,6 +286,11 @@ final class LibraryStore: ObservableObject {
         folders = saved.folders
         tracks = saved.tracks
         edits = saved.edits ?? [:]
+        // Library files from before genres existed: a size that cannot match
+        // makes the next scan re-read every file's tags once.
+        if (saved.schema ?? 1) < Self.schema {
+            for i in tracks.indices { tracks[i].size = -1 }
+        }
     }
 
     private func scheduleSave() {
@@ -294,7 +303,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func saveNow() {
-        guard let data = try? JSONEncoder().encode(Saved(folders: folders, tracks: tracks, edits: edits)) else { return }
+        guard let data = try? JSONEncoder().encode(Saved(folders: folders, tracks: tracks, edits: edits, schema: Self.schema)) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
 }
