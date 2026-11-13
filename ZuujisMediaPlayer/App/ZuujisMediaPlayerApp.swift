@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -78,6 +79,7 @@ struct ZuujisMediaPlayerApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var audioEngine = AudioEngine()
     @StateObject private var presetManager = PresetManager()
     @StateObject private var deviceProfiles = DeviceProfileStore()
@@ -87,7 +89,10 @@ struct ZuujisMediaPlayerApp: App {
     @StateObject private var playlists = PlaylistStore()
     @StateObject private var lyrics = LyricsStore()
     @StateObject private var login = LaunchAtLogin()
+    @StateObject private var widgetSettings = WidgetSettingsStore()
     @State private var widgets: WidgetBridge?
+    /// Applies whichever preset is selected, wherever it was selected from.
+    @State private var presetLink: AnyCancellable?
     // The View menu drives the same saved switches as the header buttons.
     @AppStorage(Panels.library) private var showLibrary = true
     @AppStorage(Panels.lyrics) private var showLyrics = true
@@ -119,7 +124,8 @@ struct ZuujisMediaPlayerApp: App {
                             openWindow(id: "menubar-preview")
                         }
                         DebugGallery.run(engine: audioEngine, player: player, directory: gallery,
-                                         openVisualizer: { openWindow(id: Self.visualizerWindowID) })
+                                         openVisualizer: { openWindow(id: Self.visualizerWindowID) },
+                                         openSettings: { openSettings() })
                         return
                     }
                     #endif
@@ -151,6 +157,11 @@ struct ZuujisMediaPlayerApp: App {
                 }
 
                 Toggle("Open at Login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
+            }
+
+            CommandGroup(replacing: .appSettings) {
+                SettingsLink { Text("Settings…") }
+                    .keyboardShortcut(",", modifiers: [.command])
             }
 
             // File: what a player opens. Presets live in the Equalizer menu.
@@ -204,6 +215,8 @@ struct ZuujisMediaPlayerApp: App {
                 .keyboardShortcut("v", modifiers: [.command, .shift])
 
                 Divider()
+
+                SettingsLink { Text("Arrange Window and Widgets…") }
 
                 Picker("Theme", selection: $themeID) {
                     ForEach(ThemePalette.all) { palette in
@@ -479,6 +492,17 @@ struct ZuujisMediaPlayerApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        Settings {
+            SettingsView()
+                .environmentObject(player)
+                .environmentObject(audioEngine)
+                .environmentObject(presetManager)
+                .environmentObject(lyrics)
+                .environmentObject(login)
+                .environmentObject(widgetSettings)
+        }
+        .windowResizability(.contentSize)
+
         Window("Visualizer", id: Self.visualizerWindowID) {
             VisualizerWindow()
                 .environmentObject(player)
@@ -535,8 +559,21 @@ struct ZuujisMediaPlayerApp: App {
             player.queue.saveNow()
         }
         login.enableOnFirstRun()
+        if presetLink == nil {
+            // One place applies presets, alive with or without a window: the
+            // header, the menus, the menu bar item and the widgets only select.
+            // `@Published` reports before the value is stored, hence the hop.
+            presetLink = presetManager.$selectedPresetID.dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [presetManager, audioEngine] id in
+                    MainActor.assumeIsolated {
+                        if let id, let preset = presetManager.preset(withID: id) { audioEngine.applyPreset(preset) }
+                    }
+                }
+        }
         if widgets == nil {
-            let bridge = WidgetBridge(player: player, engine: audioEngine, presets: presetManager, lyrics: lyrics)
+            let bridge = WidgetBridge(player: player, engine: audioEngine, presets: presetManager, lyrics: lyrics,
+                                      playlists: playlists, settings: widgetSettings)
             widgets = bridge
             bridge.start()
         }
@@ -570,10 +607,7 @@ struct ZuujisMediaPlayerApp: App {
     private func presetItem(_ preset: EQPreset, shortcutIndex: Int?) -> some View {
         let item = Toggle(preset.name, isOn: Binding(
             get: { presetManager.selectedPresetID == preset.id },
-            set: { _ in
-                presetManager.selectedPresetID = preset.id
-                audioEngine.applyPreset(preset)
-            }))
+            set: { _ in presetManager.selectedPresetID = preset.id }))
         if let index = shortcutIndex, index < 9 {
             item.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
         } else {

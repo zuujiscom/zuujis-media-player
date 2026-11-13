@@ -162,6 +162,13 @@ It follows the window in both directions:
 - The window scrolls once the cards' minimums outgrow its height. The smallest
   size is 620 × 460.
 
+**Settings → Window Layout** (⌘,) changes the arrangement, with a live
+miniature of the window as you go: the order of the three cards, where the
+lyrics sit (automatic, a full-height column on the left or right, or always in
+the stack), the lyrics' width, the height of each card, which card stretches
+when the window is taller than its cards need, a compact Now Playing stage,
+and the spectrum behind it. **Reset Layout** puts everything back.
+
 ### Player
 
 The player plays audio files through the same EQ. It shows the song's
@@ -252,18 +259,32 @@ Two widgets are built in, each in small, medium and large. Add them the usual
 way: right-click the desktop (or open Notification Center), choose **Edit
 Widgets**, and look for **Zuujis Media Player**.
 
-- **Now Playing**: the cover and title; the medium size adds the current lyric
-  and previous / play / next buttons; the large one shows the lyrics around the
-  line being sung. The progress bar and the lyric line move by themselves.
+- **Now Playing**: the cover and title; the medium size adds the current lyric,
+  elapsed and total time, previous / play / next and a Favorite heart; the
+  large one shows the lyrics around the line being sung, or the cover, large,
+  for a song without synced lyrics. The progress bar, the time and the lyric
+  line move by themselves.
 - **Equalizer**: a remote, since a widget has no sliders to drag. Small has
   power, Bypass, a next-preset button and preamp − / +. Medium adds **Bass**,
-  **Mid** and **Treble** steppers (1 dB each on every band in that range:
-  under 250 Hz, up to 4 kHz, above). Large adds **Flat** and nine **preset
-  buttons** that apply a preset with one tap. Tap the preamp value to reset it.
-  Fine shaping stays in the app.
+  **Mid** and **Treble** steppers (every band in that range: under 250 Hz, up
+  to 4 kHz, above). Large adds **Flat** and **preset buttons** that apply a
+  preset with one tap. Tap the preamp value to reset it. Fine shaping stays in
+  the app.
+
+**Settings → Desktop Widgets** (⌘,) arranges both, with a preview of each size:
+
+- which presets are on the Equalizer widget and in what order, how many per
+  row, and whether the small and medium sizes show presets instead of the
+  preamp or tone steppers;
+- whether the large size has the tone steppers, above or below the presets;
+- the size of the buttons, and how much one tap of − / + changes (0.5 to 3 dB);
+- for Now Playing: lyrics or the cover on the large size, the lyric line on
+  the medium one, lyric text size, and the skip buttons, heart, time and
+  blurred-cover backdrop.
 
 The buttons act on the running app, which is why it opens at login; if the app
-is not running they do nothing. Widgets refresh when something they show
+is not running they do nothing (a press made then is dropped, not carried out
+at the next launch). Widgets refresh when something they show
 changes, so a slider drag shows up a moment after you let go. They are
 sandboxed and read what the app writes (`widget-state.json` and the cover) in
 `~/Library/Application Support/Zuujis Media Player/`. macOS only finds the

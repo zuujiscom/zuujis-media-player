@@ -16,6 +16,15 @@ enum Panels {
     static let hidden = "none"
     /// Whether the visualizer's window is open (written by the window).
     static let visualizerOpen = "visualizerOpen"
+
+    /// The cards that are switched on, for `WindowLayout.arrange`.
+    static func visibleCards(library: Bool, lyrics: Bool, eq: String) -> Set<WindowLayout.Card> {
+        var cards = Set<WindowLayout.Card>()
+        if library { cards.insert(.library) }
+        if lyrics { cards.insert(.lyrics) }
+        if eq != hidden { cards.insert(.eq) }
+        return cards
+    }
 }
 
 /// Player volume: the speaker button (mute / restore) and its slider.

@@ -231,7 +231,8 @@ enum DebugGallery {
     /// shows. `ZMP_GALLERY_VISUALIZER=1` also opens the Visualizer window and
     /// writes its window number to `visualizer-id.txt` for `screencapture -l`
     /// (its Metal view cannot be cached like the main window). Pair with `ZUUJIS_DATA_DIR` so a made-up library is used.
-    static func run(engine: AudioEngine, player: PlayerEngine, directory: URL, openVisualizer: @escaping () -> Void) {
+    static func run(engine: AudioEngine, player: PlayerEngine, directory: URL, openVisualizer: @escaping () -> Void,
+                    openSettings: @escaping () -> Void = {}) {
         Task { @MainActor in
             if ProcessInfo.processInfo.environment["ZMP_GALLERY_UI_ONLY"] == nil {
                 renderVisualizer(to: directory)
@@ -291,6 +292,24 @@ enum DebugGallery {
                 try? "\(window.windowNumber)".write(
                     to: directory.appendingPathComponent("window-id.txt"), atomically: true, encoding: .utf8
                 )
+            }
+            // `ZMP_GALLERY_SETTINGS=1` opens Settings (choose the pane with
+            // `-settingsPane layout|widgets|general`) and writes its window
+            // number to `settings-id.txt`.
+            if env["ZMP_GALLERY_SETTINGS"] != nil {
+                openSettings()
+                try? await Task.sleep(for: .seconds(1.5))
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.contains("Settings") == true && $0.isVisible }) {
+                    if env["ZMP_GALLERY_SCREEN"] == "left",
+                       let screen = NSScreen.screens.min(by: { $0.frame.minX < $1.frame.minX }) {
+                        window.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 80,
+                                                      y: screen.visibleFrame.maxY - window.frame.height - 80))
+                    }
+                    window.orderFrontRegardless()
+                    try? await Task.sleep(for: .seconds(1))
+                    try? "\(window.windowNumber)".write(
+                        to: directory.appendingPathComponent("settings-id.txt"), atomically: true, encoding: .utf8)
+                }
             }
             if env["ZMP_GALLERY_MENUBAR"] != nil,
                let window = NSApp.windows.first(where: { $0.title == "Menu Bar Preview" && $0.isVisible }) {

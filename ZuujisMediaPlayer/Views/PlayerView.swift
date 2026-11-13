@@ -18,6 +18,8 @@ struct PlayerBar: View {
     /// both so the bar never measures itself.
     var width: CGFloat = 1100
     var isShort = false
+    /// The live spectrum behind the bar (Settings can switch it off).
+    var showsSpectrum = true
 
     static let height: CGFloat = 140
 
@@ -32,7 +34,7 @@ struct PlayerBar: View {
         .padding(.horizontal, 20)
         .background(alignment: .bottom) {
             // Only where the bar is one row; stacked, the bars would cross the controls.
-            if width >= 900 {
+            if width >= 900, showsSpectrum {
                 StageSpectrum()
                     .frame(height: 96)
                     .allowsHitTesting(false)

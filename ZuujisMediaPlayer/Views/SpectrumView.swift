@@ -14,6 +14,8 @@ struct SpectrumView: View {
     @EnvironmentObject private var player: PlayerEngine
     /// The ± dB span of the graph. Widens by itself when a band exceeds it.
     @AppStorage("eqGraphRange") private var rangeSetting = 12.0
+    /// A fixed height for the graph; nil lets it take the spare height.
+    var graphHeight: CGFloat?
     @State private var smoother = SpectrumSmoother()
     @State private var hover: CGPoint?
     @State private var isDragging = false
@@ -100,7 +102,7 @@ struct SpectrumView: View {
                     }
                 }
             }
-            .frame(minHeight: 190, idealHeight: 250, maxHeight: .infinity)
+            .frame(minHeight: min(190, graphHeight ?? 190), idealHeight: graphHeight ?? 250, maxHeight: graphHeight ?? .infinity)
             .background(Theme.well.opacity(Theme.palette.isLight ? 1 : 0.72))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))

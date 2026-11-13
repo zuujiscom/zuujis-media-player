@@ -280,14 +280,20 @@ final class LyricsStore: ObservableObject {
                     continue
                 }
                 try? FileManager.default.removeItem(at: file)
-                let (lyrics, _) = await Self.fetchOnline(query)
+                _ = await Self.fetchOnline(query)
                 checked += 1
-                let new = try? String(contentsOf: file, encoding: .utf8)
+                var new = try? String(contentsOf: file, encoding: .utf8)
+                // Nothing came back (offline, LRCLIB down, or it no longer has
+                // the song): keep what was saved rather than lose it.
+                if new == nil, let old {
+                    try? old.write(to: file, atomically: true, encoding: .utf8)
+                    new = old
+                }
                 // Compare the lyrics themselves, not the bookkeeping lines.
                 func body(_ text: String?) -> String {
                     (text ?? "").split(separator: "\n").filter { !$0.hasPrefix("[zmp-") }.joined(separator: "\n")
                 }
-                if lyrics == nil || body(new) != body(old) { changed += 1 }
+                if body(new) != body(old) { changed += 1 }
             }
             guard let self else { return }
             self.recheckStatus = "Checked \(checked) song\(checked == 1 ? "" : "s"), \(changed) updated"

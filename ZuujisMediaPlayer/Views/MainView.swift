@@ -10,21 +10,28 @@ struct MainView: View {
     @AppStorage(Panels.lyrics) private var showLyrics = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
+    // The arrangement, edited in Settings.
+    @AppStorage(WindowLayout.orderKey) private var order = WindowLayout.defaultOrder
+    @AppStorage(WindowLayout.placementKey) private var placement = WindowLayout.Placement.auto.rawValue
+    @AppStorage(WindowLayout.fillKey) private var fill = WindowLayout.autoFill
+    @AppStorage(WindowLayout.lyricsWidthKey) private var lyricsWidth = WindowLayout.defaultLyricsWidth
+    @AppStorage(WindowLayout.lyricsHeightKey) private var lyricsHeight = WindowLayout.defaultLyricsHeight
+    @AppStorage(WindowLayout.libraryHeightKey) private var libraryHeight = WindowLayout.defaultLibraryHeight
+    @AppStorage(WindowLayout.eqHeightKey) private var eqHeight = WindowLayout.defaultEQHeight
+    @AppStorage(WindowLayout.compactStageKey) private var compactStage = false
+    @AppStorage(WindowLayout.stageSpectrumKey) private var stageSpectrum = true
 
     /// The smallest the window goes. Below the cards' own minimums the
     /// content scrolls.
     static let minSize = CGSize(width: 620, height: 460)
-    /// Width from which the lyrics card sits beside the library (or the EQ)
-    /// instead of under it.
-    static let besideWidth: CGFloat = 1080
-    static let lyricsWidth: CGFloat = 340
 
     var body: some View {
         let _ = Theme.apply(themeID)
         GeometryReader { root in
             VStack(spacing: 0) {
                 HeaderBar()
-                PlayerBar(width: root.size.width, isShort: root.size.height < 600)
+                PlayerBar(width: root.size.width, isShort: root.size.height < 600 || compactStage,
+                          showsSpectrum: stageSpectrum)
                 // The cards stretch to fill whatever height the window has; the
                 // scroll view only matters once their minimums outgrow it.
                 GeometryReader { geo in
@@ -63,44 +70,83 @@ struct MainView: View {
         .id(themeID)
     }
 
-    /// Library, lyrics and the EQ, arranged for the width they have: with
-    /// room the lyrics sit beside the library (or the EQ when the library is
-    /// off); without it they go under.
+    /// Library, lyrics and the EQ in the order, places and sizes chosen in
+    /// Settings (`WindowLayout`). By default the lyrics sit beside the top
+    /// card when there is room and go into the stack when there is not.
     @ViewBuilder
     private func cards(width: CGFloat) -> some View {
-        let eqShown = eqPanel != Panels.hidden
-        let beside = width >= Self.besideWidth
-        VStack(spacing: 14) {
-            if showLibrary {
-                if showLyrics && beside {
-                    HStack(alignment: .top, spacing: 14) {
-                        LibraryView(fillsHeight: !eqShown, availableWidth: width - Self.lyricsWidth - 14)
-                        LyricsCard().frame(width: Self.lyricsWidth).frame(maxHeight: .infinity)
-                    }
-                    .frame(maxHeight: eqShown ? nil : .infinity)
-                } else {
-                    LibraryView(fillsHeight: !eqShown && !showLyrics, availableWidth: width)
-                    if showLyrics { LyricsCard().frame(minHeight: 260, maxHeight: eqShown ? 260 : .infinity) }
-                }
-                if eqShown { eqCard }
-            } else if showLyrics && eqShown && beside {
+        let plan = WindowLayout.arrange(order: order, placement: placement, fill: fill, lyricsWidth: lyricsWidth,
+                                        visible: Panels.visibleCards(library: showLibrary, lyrics: showLyrics, eq: eqPanel),
+                                        width: width)
+        let side = CGFloat(plan.lyricsWidth)
+        if plan.stack.isEmpty {
+            AllPanelsHidden()
+        } else {
+            switch plan.side {
+            case .none:
+                stack(plan, width: width, besideTop: false)
+            case .besideTop:
+                stack(plan, width: width, besideTop: true)
+            case .column(let leading):
                 HStack(alignment: .top, spacing: 14) {
-                    eqCard.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    LyricsCard().frame(width: Self.lyricsWidth).frame(maxHeight: .infinity)
+                    if leading { LyricsCard().frame(width: side).frame(maxHeight: .infinity) }
+                    stack(plan, width: width - side - 14, besideTop: false)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    if !leading { LyricsCard().frame(width: side).frame(maxHeight: .infinity) }
                 }
-                .frame(maxHeight: .infinity)
-            } else {
-                if showLyrics { LyricsCard().frame(minHeight: 260, maxHeight: eqShown ? 260 : .infinity) }
-                if eqShown { eqCard }
             }
-            if !showLibrary && !showLyrics && !eqShown { AllPanelsHidden() }
         }
     }
 
+    /// The cards top to bottom. With `besideTop` the lyrics share the first
+    /// card's row.
+    private func stack(_ plan: WindowLayout.Arrangement, width: CGFloat, besideTop: Bool) -> some View {
+        let side = CGFloat(plan.lyricsWidth)
+        return VStack(spacing: 14) {
+            ForEach(plan.stack) { card in
+                if besideTop, card == plan.stack.first {
+                    HStack(alignment: .top, spacing: 14) {
+                        self.card(card, fills: plan.fill == card, width: width - side - 14)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                        LyricsCard().frame(width: side).frame(maxHeight: .infinity)
+                    }
+                    // A card of a set height sets the row's: the lyrics end
+                    // level with it instead of running on below.
+                    .fixedSize(horizontal: false, vertical: plan.fill != card && hasSetHeight(card))
+                    .frame(maxHeight: plan.fill == card ? .infinity : nil)
+                } else {
+                    self.card(card, fills: plan.fill == card, width: width)
+                }
+            }
+        }
+    }
+
+    /// The faders have a range of heights, not one.
+    private func hasSetHeight(_ card: WindowLayout.Card) -> Bool {
+        card == .library || (card == .eq && eqPanel == Panels.response)
+    }
+
+    /// One card at the size Settings gives it; the one that `fills` takes
+    /// the window's spare height instead.
     @ViewBuilder
-    private var eqCard: some View {
-        if eqPanel == Panels.response { SpectrumView() }
-        if eqPanel == Panels.equalizer { BandControlsView().frame(maxWidth: .infinity) }
+    private func card(_ card: WindowLayout.Card, fills: Bool, width: CGFloat) -> some View {
+        switch card {
+        case .library:
+            LibraryView(fillsHeight: fills, availableWidth: width, columnHeight: CGFloat(libraryHeight))
+        case .lyrics:
+            let height = CGFloat(lyricsHeight)
+            if fills {
+                LyricsCard().frame(minHeight: min(260, height), maxHeight: .infinity)
+            } else {
+                LyricsCard().frame(height: height)
+            }
+        case .eq:
+            if eqPanel == Panels.response {
+                SpectrumView(graphHeight: fills ? nil : CGFloat(eqHeight))
+            } else {
+                BandControlsView(rowMaxHeight: CGFloat(eqHeight)).frame(maxWidth: .infinity)
+            }
+        }
     }
 }
 
@@ -198,11 +244,6 @@ struct HeaderBar: View {
         .padding(.leading, 84)
         .padding(.trailing, 16)
         .frame(height: 52)
-        .onChange(of: presets.selectedPresetID) { _, newID in
-            if let presetID = newID, let preset = presets.preset(withID: presetID) {
-                engine.applyPreset(preset)
-            }
-        }
     }
 
     private func row(brandText: Bool, compact: Bool) -> some View {

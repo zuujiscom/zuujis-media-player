@@ -43,8 +43,18 @@ struct WidgetState: Codable, Equatable {
     var bass = 0.0
     var mid = 0.0
     var treble = 0.0
-    /// Every preset's name, built-in first, for the widget's preset buttons.
+    /// The presets the widget offers, in the order chosen in Settings (every
+    /// preset, built-in first, when none were chosen).
     var presets: [String] = []
+
+    // Added later. Optional, so a widget and an app of different builds can
+    // still read each other's file.
+    /// Whether the playing song is in Favorites.
+    var favorite: Bool?
+    /// How the widgets are laid out; nil means the defaults.
+    var settings: WidgetSettings?
+
+    var layout: WidgetSettings { settings ?? WidgetSettings() }
 
     /// Where the song is at `date`.
     func position(at date: Date) -> Double {
@@ -63,13 +73,104 @@ struct WidgetState: Codable, Equatable {
     }
 }
 
+/// The user's choices for the desktop widgets, edited in the app's Settings
+/// and handed to the widgets inside `WidgetState`. Every field decodes with a
+/// default, so adding one never breaks an older file.
+struct WidgetSettings: Codable, Equatable {
+    static let sizes = ["compact", "regular", "large"]
+
+    // Equalizer widget
+    /// The presets on the widget, by name and in order. Empty means all.
+    var eqPresets: [String] = []
+    /// What the small widget shows under its header: `preamp` or `presets`.
+    var eqSmall = "preamp"
+    /// What the medium widget shows: `tone` (bass/mid/treble/preamp) or `presets`.
+    var eqMedium = "tone"
+    /// Whether the large widget has the tone steppers above its presets.
+    var eqLargeTone = true
+    /// Large widget: presets above the tone steppers instead of below.
+    var eqPresetsFirst = false
+    /// Preset buttons per row on the medium and large widgets (2 to 4).
+    var eqColumns = 3
+    /// What one tap of − or + changes, in dB.
+    var eqStep = 1.0
+    /// Size of the buttons and text: `compact`, `regular` or `large`.
+    var eqSize = "regular"
+
+    // Now Playing widget
+    /// The lyric line on the medium widget.
+    var npMediumLyrics = true
+    /// What fills the large widget: `lyrics` or `cover`.
+    var npLarge = "lyrics"
+    /// Lyric text size: `compact`, `regular` or `large`.
+    var npLyricSize = "regular"
+    var npSkipButtons = true
+    var npTime = true
+    var npFavorite = true
+    /// The cover, blurred, as the widget's backdrop.
+    var npCoverBackdrop = true
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func get<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            ((try? c.decodeIfPresent(T.self, forKey: key)) ?? nil) ?? fallback
+        }
+        let d = WidgetSettings()
+        eqPresets = get(.eqPresets, d.eqPresets)
+        eqSmall = get(.eqSmall, d.eqSmall)
+        eqMedium = get(.eqMedium, d.eqMedium)
+        eqLargeTone = get(.eqLargeTone, d.eqLargeTone)
+        eqPresetsFirst = get(.eqPresetsFirst, d.eqPresetsFirst)
+        eqColumns = min(4, max(2, get(.eqColumns, d.eqColumns)))
+        eqStep = min(6, max(0.5, get(.eqStep, d.eqStep)))
+        eqSize = get(.eqSize, d.eqSize)
+        npMediumLyrics = get(.npMediumLyrics, d.npMediumLyrics)
+        npLarge = get(.npLarge, d.npLarge)
+        npLyricSize = get(.npLyricSize, d.npLyricSize)
+        npSkipButtons = get(.npSkipButtons, d.npSkipButtons)
+        npTime = get(.npTime, d.npTime)
+        npFavorite = get(.npFavorite, d.npFavorite)
+        npCoverBackdrop = get(.npCoverBackdrop, d.npCoverBackdrop)
+    }
+
+    /// 0.88, 1 or 1.14 for `compact`, `regular`, `large`.
+    static func factor(_ size: String) -> Double {
+        size == "compact" ? 0.88 : (size == "large" ? 1.14 : 1)
+    }
+
+    /// The presets the widget offers out of `all`: the chosen ones that still
+    /// exist, in the chosen order, or all of them when none were chosen.
+    func offeredPresets(from all: [String]) -> [String] {
+        let chosen = eqPresets.filter(all.contains)
+        return chosen.isEmpty ? all : chosen
+    }
+
+    /// "+4", "-1.5", or a bare "0" for anything that rounds to nothing.
+    static func signed(_ value: Double, places: Int) -> String {
+        let unit = pow(10, Double(places))
+        let shown = (value * unit).rounded() / unit
+        return shown == 0 ? "0" : String(format: "%+.\(places)f", shown)
+    }
+
+    /// How many rows of `rowHeight` fit in `height` with `spacing` between.
+    static func rows(in height: Double, rowHeight: Double, spacing: Double) -> Int {
+        max(0, Int(((height + spacing) / (rowHeight + spacing)).rounded(.down)))
+    }
+}
+
 struct WidgetCommand: Codable {
-    /// `playPause`, `next`, `previous`, `eqPower`, `eqBypass`, `nextPreset`,
-    /// `preamp` (arg: dB step, 0 resets), `tone` (arg: `bass`/`mid`/`treble`,
-    /// amount: dB step), `flat` or `preset` (arg: the preset's name).
+    /// `playPause`, `next`, `previous`, `favorite`, `eqPower`, `eqBypass`,
+    /// `nextPreset`, `preamp` (amount: dB step, 0 resets), `tone` (arg:
+    /// `bass`/`mid`/`treble`, amount: dB step), `flat` or `preset` (arg: the
+    /// preset's name).
     var name: String
     var arg: String?
     var amount: Double?
+    /// When the button was pressed. A press the app was not running for is
+    /// dropped rather than carried out at the next launch.
+    var sent: Date? = Date()
 }
 
 enum WidgetFiles {

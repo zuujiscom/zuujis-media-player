@@ -3,8 +3,9 @@
 import SwiftUI
 
 /// Header-bar preset control. Replaces the old sidebar list — selecting a
-/// preset only sets `selectedPresetID`; `HeaderBar`'s `onChange` is what
-/// applies it, so presets are never applied twice.
+/// preset only sets `selectedPresetID`; the app applies whatever is selected
+/// (`ZuujisMediaPlayerApp.bootstrap`), so presets are never applied twice and
+/// are applied even when the main window is closed.
 struct PresetMenu: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var presets: PresetManager
@@ -168,9 +169,7 @@ enum PresetActions {
         alert.window.initialFirstResponder = tf
 
         if alert.runModal() == .alertFirstButtonReturn {
-            if let idx = presets.customPresets.firstIndex(where: { $0.id == preset.id }) {
-                presets.customPresets[idx].name = tf.stringValue
-            }
+            presets.renamePreset(preset.id, to: tf.stringValue)
         }
     }
 

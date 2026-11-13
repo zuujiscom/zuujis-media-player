@@ -6,6 +6,8 @@ import SwiftUI
 struct BandControlsView: View {
     @EnvironmentObject private var engine: AudioEngine
     @State private var showBandDetails = false
+    /// The tallest the fader row grows (Settings).
+    var rowMaxHeight: CGFloat = 360
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -127,7 +129,8 @@ struct BandControlsView: View {
                 ScrollView(.horizontal, showsIndicators: true) { row }
             }
         }
-        .frame(minHeight: BandSlider.minRowHeight, idealHeight: BandSlider.minRowHeight, maxHeight: 360)
+        .frame(minHeight: BandSlider.minRowHeight, idealHeight: BandSlider.minRowHeight,
+               maxHeight: max(BandSlider.minRowHeight, rowMaxHeight))
         .padding(.vertical, 6)
     }
 

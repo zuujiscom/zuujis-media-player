@@ -53,6 +53,13 @@ final class PresetManager: ObservableObject {
         persist()
     }
 
+    func renamePreset(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = customPresets.firstIndex(where: { $0.id == id }) else { return }
+        customPresets[idx].name = trimmed
+        persist()
+    }
+
     func duplicatePreset(_ id: UUID) {
         guard let original = allPresets.first(where: { $0.id == id }) else { return }
         let copy = EQPreset(name: original.name + " Copy", bands: original.bands)

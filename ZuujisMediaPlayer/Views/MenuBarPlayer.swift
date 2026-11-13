@@ -71,6 +71,7 @@ struct MenuBarPlayer: View {
                 }
                 Spacer(minLength: 0)
                 Menu {
+                    SettingsLink { Text("Settings…") }
                     Toggle("Open at Login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
                     if login.needsApproval {
                         Button("Approve in Login Items Settings…") { SMLoginSettings.open() }

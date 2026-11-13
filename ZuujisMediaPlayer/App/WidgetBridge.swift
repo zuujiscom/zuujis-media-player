@@ -19,15 +19,23 @@ final class WidgetBridge {
     private let engine: AudioEngine
     private let presets: PresetManager
     private let lyrics: LyricsStore
+    private let playlists: PlaylistStore
+    private let settings: WidgetSettingsStore
+    /// What the widgets were last told, so nothing is written or reloaded
+    /// when a change did not reach anything they show.
+    private var published: WidgetState?
     private var cancellables = Set<AnyCancellable>()
     private var watcher: DispatchSourceFileSystemObject?
     private var artworkFor: URL?
 
-    init(player: PlayerEngine, engine: AudioEngine, presets: PresetManager, lyrics: LyricsStore) {
+    init(player: PlayerEngine, engine: AudioEngine, presets: PresetManager, lyrics: LyricsStore,
+         playlists: PlaylistStore, settings: WidgetSettingsStore) {
         self.player = player
         self.engine = engine
         self.presets = presets
         self.lyrics = lyrics
+        self.playlists = playlists
+        self.settings = settings
     }
 
     func start() {
@@ -46,8 +54,12 @@ final class WidgetBridge {
             engine.$masterGain.map { _ in () }.eraseToAnyPublisher(),
             engine.$bands.map { _ in () }.eraseToAnyPublisher(),
             presets.$selectedPresetID.map { _ in () }.eraseToAnyPublisher(),
+            // A saved, renamed or deleted preset changes the widget's buttons.
+            presets.$customPresets.map { _ in () }.eraseToAnyPublisher(),
+            playlists.$favoritePaths.map { _ in () }.eraseToAnyPublisher(),
+            settings.$settings.map { _ in () }.eraseToAnyPublisher(),
         ])
-        .debounce(for: .milliseconds(600), scheduler: DispatchQueue.main)
+        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         .sink { [weak self] in MainActor.assumeIsolated { self?.publish() } }
         .store(in: &cancellables)
 
@@ -66,11 +78,9 @@ final class WidgetBridge {
             state.album = track.album ?? ""
             state.format = track.formatSummary
             state.duration = track.duration
-            writeArtwork(for: track)
-        } else {
-            artworkFor = nil
-            try? FileManager.default.removeItem(at: WidgetFiles.art)
+            state.favorite = playlists.isFavorite(track.url.path)
         }
+        let artChanged = writeArtwork(for: player.track)
         state.isPlaying = player.state == .playing
         state.position = player.currentTime()
         state.anchor = Date()
@@ -89,8 +99,19 @@ final class WidgetBridge {
         state.bass = average(of: engine.bands.filter { $0.frequency < 250 })
         state.mid = average(of: engine.bands.filter { $0.frequency >= 250 && $0.frequency <= 4000 })
         state.treble = average(of: engine.bands.filter { $0.frequency > 4000 })
-        state.presets = (EQPreset.allBuiltin + presets.customPresets).map(\.name)
+        state.presets = settings.settings.offeredPresets(from: presets.allPresets.map(\.name))
+        state.settings = settings.settings
 
+        // Most events (a tag filling in, a meter-driven republish) change
+        // nothing a widget shows. The position counts as unchanged while it
+        // is where the widgets already expect it to be.
+        if let old = published, !artChanged {
+            var same = old
+            same.anchor = state.anchor
+            same.position = state.position
+            if same == state, abs(state.position - old.position(at: state.anchor)) < 0.35 { return }
+        }
+        published = state
         WidgetFiles.write(state)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -99,11 +120,19 @@ final class WidgetBridge {
         bands.isEmpty ? 0 : bands.map(\.gain).reduce(0, +) / Double(bands.count)
     }
 
-    /// A small JPEG of the cover, once per song.
-    private func writeArtwork(for track: PlayerEngine.TrackInfo) {
-        guard artworkFor != track.url, let image = track.artwork else { return }
+    /// A small JPEG of the cover, once per song; removed when the song has
+    /// none, so the widgets never keep the previous song's cover. Returns
+    /// whether the file changed.
+    private func writeArtwork(for track: PlayerEngine.TrackInfo?) -> Bool {
+        guard let track, let image = track.artwork, image.size.width > 0, image.size.height > 0 else {
+            guard artworkFor != nil || FileManager.default.fileExists(atPath: WidgetFiles.art.path) else { return false }
+            artworkFor = nil
+            try? FileManager.default.removeItem(at: WidgetFiles.art)
+            return true
+        }
+        guard artworkFor != track.url else { return false }
         let side: CGFloat = 320
-        let scaled = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+        let scaled = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
             // Fill the square, centred.
             let source = image.size
             let scale = max(side / source.width, side / source.height)
@@ -113,9 +142,10 @@ final class WidgetBridge {
             return true
         }
         guard let tiff = scaled.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-              let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else { return }
-        try? jpeg.write(to: WidgetFiles.art, options: .atomic)
+              let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]),
+              (try? jpeg.write(to: WidgetFiles.art, options: .atomic)) != nil else { return false }
         artworkFor = track.url
+        return true
     }
 
     // MARK: Widgets → app
@@ -130,18 +160,31 @@ final class WidgetBridge {
         source.setCancelHandler { close(descriptor) }
         source.resume()
         watcher = source
-        runCommands()
+        // Buttons pressed while the app was not running are thrown away:
+        // carrying them out now would toggle things the user gave up on.
+        runCommands(discard: true)
     }
 
-    private func runCommands() {
+    private func runCommands(discard: Bool = false) {
         let folder = WidgetFiles.commands
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.pathExtension == "json" {
-            defer { try? FileManager.default.removeItem(at: file) }
-            guard let data = try? Data(contentsOf: file),
-                  let command = try? JSONDecoder().decode(WidgetCommand.self, from: data) else { continue }
-            run(command)
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        // In the order they were pressed: two quick taps of + are two steps.
+        let ordered = files.filter { $0.pathExtension == "json" }.sorted {
+            let a = (try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            let b = (try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            return a < b
         }
+        var ran = false
+        for file in ordered {
+            defer { try? FileManager.default.removeItem(at: file) }
+            guard !discard, let data = try? Data(contentsOf: file),
+                  let command = try? JSONDecoder().decode(WidgetCommand.self, from: data) else { continue }
+            if let sent = command.sent, Date().timeIntervalSince(sent) > 20 { continue }
+            run(command)
+            ran = true
+        }
+        // Answer a tap at once instead of waiting out the debounce.
+        if ran { publish() }
     }
 
     /// The preamp in dB steps, within the slider's own range.
@@ -174,18 +217,21 @@ final class WidgetBridge {
         case "tone":
             if let region = command.arg, let step = command.amount { nudgeTone(region, by: step) }
         case "flat": engine.resetToFlat()
+        case "favorite":
+            if let track = player.track { _ = playlists.toggleFavorite(track.url.path) }
+        // Choosing a preset only selects it; the app applies whatever is
+        // selected (see `bootstrap`), the same as its own menus.
         case "preset":
-            if let name = command.arg, let found = (EQPreset.allBuiltin + presets.customPresets).first(where: { $0.name == name }) {
+            if let name = command.arg, let found = presets.allPresets.first(where: { $0.name == name }) {
                 presets.selectedPresetID = found.id
-                engine.applyPreset(found)
             }
         case "nextPreset":
-            let all = EQPreset.allBuiltin + presets.customPresets
-            guard !all.isEmpty else { return }
-            let index = all.firstIndex { $0.id == presets.selectedPresetID } ?? -1
-            let next = all[(index + 1) % all.count]
-            presets.selectedPresetID = next.id
-            engine.applyPreset(next)
+            // Steps through the presets the widget offers, not all of them.
+            let names = settings.settings.offeredPresets(from: presets.allPresets.map(\.name))
+            guard !names.isEmpty else { return }
+            let index = names.firstIndex(of: presets.selectedPreset?.name ?? "") ?? -1
+            let next = names[(index + 1) % names.count]
+            if let found = presets.allPresets.first(where: { $0.name == next }) { presets.selectedPresetID = found.id }
         default: break
         }
     }

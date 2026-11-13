@@ -56,10 +56,12 @@ struct NowPlayingWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "NowPlaying", provider: PlayerProvider()) { entry in
             NowPlayingView(entry: entry)
-                .containerBackground(for: .widget) { WTheme.background(art: entry.art) }
+                .containerBackground(for: .widget) {
+                    WTheme.background(art: entry.state?.layout.npCoverBackdrop == false ? nil : entry.art)
+                }
         }
         .configurationDisplayName("Now Playing")
-        .description("The song that is playing, its lyrics and the player controls.")
+        .description("The song that is playing, its lyrics and the player controls. Arrange it in the app's Settings.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
@@ -73,6 +75,9 @@ struct NowPlayingView: View {
     /// read by shape and opacity as well as colour.
     @Environment(\.widgetRenderingMode) private var mode
     private var full: Bool { mode == .fullColor }
+    private var layout: WidgetSettings { entry.state?.layout ?? WidgetSettings() }
+    /// The lyric size chosen in Settings, as a factor.
+    private var lyricScale: CGFloat { CGFloat(WidgetSettings.factor(layout.npLyricSize)) }
 
     var body: some View {
         Group {
@@ -159,6 +164,48 @@ struct NowPlayingView: View {
         .frame(height: 4)
     }
 
+    /// Elapsed and total time. The elapsed half counts by itself while the
+    /// song plays, in every rendering mode.
+    @ViewBuilder
+    private func times(_ state: WidgetState) -> some View {
+        if layout.npTime, state.duration > 0 {
+            let here = state.position(at: entry.date)
+            HStack(spacing: 0) {
+                if state.isPlaying, state.speed == 1 {
+                    let start = entry.date.addingTimeInterval(-here)
+                    Text(timerInterval: start...start.addingTimeInterval(state.duration), countsDown: false)
+                } else {
+                    Text(Self.clock(here))
+                }
+                Spacer(minLength: 4)
+                Text(Self.clock(state.duration))
+            }
+            .font(.system(size: 9.5, weight: .medium)).monospacedDigit()
+            .foregroundStyle(.white.opacity(0.55))
+        }
+    }
+
+    private static func clock(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds).rounded(.down))
+        return total >= 3600 ? String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+                             : String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    @ViewBuilder
+    private func heart(_ state: WidgetState, size: CGFloat = 30) -> some View {
+        if layout.npFavorite, let on = state.favorite {
+            Button(intent: FavoriteIntent()) {
+                Image(systemName: on ? "heart.fill" : "heart")
+                    .font(.system(size: size * 0.44, weight: .semibold))
+                    .foregroundStyle(on ? WTheme.pink : .white.opacity(0.6))
+                    .frame(width: size, height: size)
+                    .contentShape(Circle())
+                    .widgetAccentable(on)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private func titleBlock(_ state: WidgetState, titleSize: CGFloat, lines: Int = 1) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(state.title).font(.system(size: titleSize, weight: .bold)).lineLimit(lines)
@@ -202,24 +249,28 @@ struct NowPlayingView: View {
             artwork(118)
             VStack(alignment: .leading, spacing: 0) {
                 titleBlock(state, titleSize: 15)
-                if let line = lyricText(state, currentLine(state)) {
+                if layout.npMediumLyrics, let line = lyricText(state, currentLine(state)) {
                     Text(line)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * lyricScale, weight: .bold))
                         .foregroundStyle(WTheme.signal)
                         .widgetAccentable()
-                        .lineLimit(2)
+                        .lineLimit(layout.npTime ? 1 : 2)
                         .padding(.top, 8)
                 }
                 Spacer(minLength: 4)
                 progress(state)
-                HStack(spacing: 18) {
-                    Spacer()
-                    skip("backward.fill", PreviousTrackIntent())
-                    playButton(state, size: 38)
-                    skip("forward.fill", NextTrackIntent())
-                    Spacer()
+                times(state).padding(.top, 3)
+                HStack(spacing: 14) {
+                    // Balances the heart, so play stays centred.
+                    if layout.npFavorite, state.favorite != nil { Color.clear.frame(width: 30, height: 30) }
+                    Spacer(minLength: 0)
+                    if layout.npSkipButtons { skip("backward.fill", PreviousTrackIntent()) }
+                    playButton(state, size: 34)
+                    if layout.npSkipButtons { skip("forward.fill", NextTrackIntent()) }
+                    Spacer(minLength: 0)
+                    heart(state)
                 }
-                .padding(.top, 8)
+                .padding(.top, 4)
             }
         }
         .padding(14)
@@ -229,17 +280,27 @@ struct NowPlayingView: View {
         let index = currentLine(state)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                artwork(64)
+                // The cover view below already shows it large.
+                if !(state.lyrics.isEmpty || layout.npLarge == "cover") { artwork(64) }
                 titleBlock(state, titleSize: 16)
                 Spacer(minLength: 0)
                 playButton(state, size: 40)
             }
-            if state.lyrics.isEmpty {
-                Spacer()
-                Text("No synced lyrics for this song")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.45))
-                    .frame(maxWidth: .infinity)
-                Spacer()
+            if state.lyrics.isEmpty || layout.npLarge == "cover" {
+                // No lyrics to follow (or the cover was chosen in Settings):
+                // the cover, large, with the line being sung under it.
+                GeometryReader { geo in
+                    let line = lyricText(state, currentLine(state))
+                    VStack(spacing: 8) {
+                        artwork(max(40, min(geo.size.width, geo.size.height - (line == nil ? 0 : 44))))
+                        if let line {
+                            Text(line).font(.system(size: 14 * lyricScale, weight: .bold))
+                                .foregroundStyle(WTheme.signal).widgetAccentable()
+                                .lineLimit(2).multilineTextAlignment(.center)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     ForEach(-1...4, id: \.self) { offset in
@@ -247,7 +308,7 @@ struct NowPlayingView: View {
                         if let text = lyricText(state, state.lyrics.indices.contains(i) ? i : nil) {
                             let active = offset == 0
                             Text(text)
-                                .font(.system(size: active ? 19 : 14.5, weight: active ? .bold : .semibold))
+                                .font(.system(size: (active ? 19 : 14.5) * lyricScale, weight: active ? .bold : .semibold))
                                 .foregroundStyle(active ? AnyShapeStyle(WTheme.signal) : AnyShapeStyle(Color.white.opacity(offset < 0 ? 0.28 : max(0.2, 0.62 - 0.11 * Double(offset)))))
                                 .lineLimit(2)
                                 .widgetAccentable(active)
@@ -258,13 +319,23 @@ struct NowPlayingView: View {
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
+                .clipped()
             }
-            progress(state)
-            HStack(spacing: 26) {
-                Spacer()
-                skip("backward.fill", PreviousTrackIntent(), size: 34)
-                skip("forward.fill", NextTrackIntent(), size: 34)
-                Spacer()
+            VStack(spacing: 3) {
+                progress(state)
+                times(state)
+            }
+            if layout.npSkipButtons || (layout.npFavorite && state.favorite != nil) {
+                HStack(spacing: 26) {
+                    if layout.npFavorite, state.favorite != nil { Color.clear.frame(width: 34, height: 34) }
+                    Spacer(minLength: 0)
+                    if layout.npSkipButtons {
+                        skip("backward.fill", PreviousTrackIntent(), size: 34)
+                        skip("forward.fill", NextTrackIntent(), size: 34)
+                    }
+                    Spacer(minLength: 0)
+                    heart(state, size: 34)
+                }
             }
         }
         .padding(16)

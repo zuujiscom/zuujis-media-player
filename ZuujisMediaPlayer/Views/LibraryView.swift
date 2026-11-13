@@ -22,6 +22,8 @@ struct LibraryView: View {
     /// shows everything under the choice that is left.
     var availableWidth: CGFloat = 1000
     var minColumnHeight: CGFloat = 300
+    /// The columns' height when the card does not fill (Settings).
+    var columnHeight: CGFloat = 300
     private static let narrowWidth: CGFloat = 820
     private var narrow: Bool { availableWidth < Self.narrowWidth }
 
@@ -87,7 +89,8 @@ struct LibraryView: View {
                 }
                 // Fixed height: each column scrolls inside it instead of the
                 // card growing to fit a long list.
-                .frame(minHeight: minColumnHeight, idealHeight: 300, maxHeight: fillsHeight ? .infinity : 300)
+                .frame(minHeight: min(minColumnHeight, columnHeight), idealHeight: columnHeight,
+                       maxHeight: fillsHeight ? .infinity : columnHeight)
             }
         }
         .card()

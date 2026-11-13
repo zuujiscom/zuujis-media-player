@@ -31,6 +31,14 @@ struct PreviousTrackIntent: AppIntent {
     }
 }
 
+struct FavoriteIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add to or Remove from Favorites"
+    static let isDiscoverable = false
+    func perform() async throws -> some IntentResult {
+        WidgetFiles.send(WidgetCommand(name: "favorite")); return .result()
+    }
+}
+
 struct EQPowerIntent: AppIntent {
     static let title: LocalizedStringResource = "Turn Equalizer On or Off"
     static let isDiscoverable = false
@@ -55,7 +63,6 @@ struct NextPresetIntent: AppIntent {
     }
 }
 
-/// One intent for every tone control, so a button is `ToneIntent(...)`.
 struct PreampIntent: AppIntent {
     static let title: LocalizedStringResource = "Change the Preamp"
     static let isDiscoverable = false
@@ -67,6 +74,7 @@ struct PreampIntent: AppIntent {
     }
 }
 
+/// One intent for every tone control, so a button is `ToneIntent(...)`.
 struct ToneIntent: AppIntent {
     static let title: LocalizedStringResource = "Change Bass, Mid or Treble"
     static let isDiscoverable = false

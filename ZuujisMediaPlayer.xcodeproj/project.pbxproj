@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FD5A94489ADD4D8AAC4C5E18 /* WindowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4760590A55C9D2031B97E2 /* WindowLayout.swift */; };
+		A98CB203693F01C5AAF1B44B /* WidgetSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958231E6182FDE1F9EBD4779 /* WidgetSettingsStore.swift */; };
+		2B4F79A3A55AC3A4578B8095 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6AAB14FE755A51AAD9E47F /* SettingsView.swift */; };
 		1000000000000000000000E1 /* ZuujisWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2000000000000000000000E1 /* ZuujisWidgets.swift */; };
 		1000000000000000000000E2 /* NowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2000000000000000000000E2 /* NowPlayingWidget.swift */; };
 		1000000000000000000000E3 /* EqualizerWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2000000000000000000000E3 /* EqualizerWidget.swift */; };
@@ -60,6 +63,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		6E4760590A55C9D2031B97E2 /* WindowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLayout.swift; sourceTree = "<group>"; };
+		958231E6182FDE1F9EBD4779 /* WidgetSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSettingsStore.swift; sourceTree = "<group>"; };
+		9D6AAB14FE755A51AAD9E47F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2000000000000000000000E1 /* ZuujisWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuujisWidgets.swift; sourceTree = "<group>"; };
 		2000000000000000000000E2 /* NowPlayingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingWidget.swift; sourceTree = "<group>"; };
 		2000000000000000000000E3 /* EqualizerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualizerWidget.swift; sourceTree = "<group>"; };
@@ -235,6 +241,7 @@
 				2000000000000000000000B1 /* LibraryModel.swift */,
 				2000000000000000000000C1 /* TagWriter.swift */,
 				2000000000000000000000D1 /* Playlist.swift */,
+				6E4760590A55C9D2031B97E2 /* WindowLayout.swift */,
 				CBE650577099012E1381FEA3 /* WidgetState.swift */,
 				DF8F5628D2EEC3CA6D82ABC0 /* Lyrics.swift */,
 				2000000000000000000000D3 /* AppPaths.swift */,
@@ -246,6 +253,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000008 /* PresetManager.swift */,
+				958231E6182FDE1F9EBD4779 /* WidgetSettingsStore.swift */,
 				200000000000000000000042 /* DeviceProfileStore.swift */,
 				200000000000000000000052 /* MilkdropLibrary.swift */,
 				200000000000000000000073 /* PlaybackQueue.swift */,
@@ -274,6 +282,7 @@
 				7720875FAEA740A0AF9B85D8 /* SpeedControl.swift */,
 				FB440F2680547BF527186F00 /* LyricsView.swift */,
 				78E0743891276C438B68CF42 /* Controls.swift */,
+				9D6AAB14FE755A51AAD9E47F /* SettingsView.swift */,
 				2000000000000000000000B3 /* LibraryView.swift */,
 			);
 			path = Views;
@@ -411,6 +420,7 @@
 				100000000000000000000041 /* DeviceProfile.swift in Sources */,
 				100000000000000000000007 /* EQPreset.swift in Sources */,
 				100000000000000000000008 /* PresetManager.swift in Sources */,
+				A98CB203693F01C5AAF1B44B /* WidgetSettingsStore.swift in Sources */,
 				100000000000000000000042 /* DeviceProfileStore.swift in Sources */,
 				100000000000000000000052 /* MilkdropLibrary.swift in Sources */,
 				100000000000000000000073 /* PlaybackQueue.swift in Sources */,
@@ -424,6 +434,7 @@
 				1000000000000000000000B1 /* LibraryModel.swift in Sources */,
 				1000000000000000000000C1 /* TagWriter.swift in Sources */,
 				1000000000000000000000D1 /* Playlist.swift in Sources */,
+				FD5A94489ADD4D8AAC4C5E18 /* WindowLayout.swift in Sources */,
 				E0C305C10AB4344652ADA308 /* WidgetState.swift in Sources */,
 				94BBAA6FF83BD8F5BEDE6EE5 /* Lyrics.swift in Sources */,
 				1000000000000000000000D3 /* AppPaths.swift in Sources */,
@@ -439,6 +450,7 @@
 				A220C3FAF3990A9CE5A41896 /* SpeedControl.swift in Sources */,
 				C63CEE1AE03F025CD74D49D4 /* LyricsView.swift in Sources */,
 				896C3F7E7181D2B50EEF74A8 /* Controls.swift in Sources */,
+				2B4F79A3A55AC3A4578B8095 /* SettingsView.swift in Sources */,
 				1000000000000000000000B3 /* LibraryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
