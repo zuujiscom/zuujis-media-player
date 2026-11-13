@@ -159,11 +159,6 @@ struct ZuujisMediaPlayerApp: App {
                 Toggle("Open at Login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
             }
 
-            CommandGroup(replacing: .appSettings) {
-                SettingsLink { Text("Settings…") }
-                    .keyboardShortcut(",", modifiers: [.command])
-            }
-
             // File: what a player opens. Presets live in the Equalizer menu.
             CommandGroup(replacing: .newItem) {
                 Button("Open Files or Folder…") {
