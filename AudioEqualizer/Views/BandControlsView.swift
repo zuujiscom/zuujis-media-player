@@ -10,7 +10,10 @@ struct BandControlsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
+                PowerButton()
                 SectionTitle(text: "Equalizer", systemImage: "slider.vertical.3")
+                PresetMenu()
+                BypassButton()
                 Spacer()
 
                 Button {

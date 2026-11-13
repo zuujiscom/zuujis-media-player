@@ -84,10 +84,10 @@ developer account is needed to build it for your own Mac.
 
 ### Use it
 
-1. Press the **power button** at the top left of the window, or choose
+1. Press the **power button** in the header of the Response or Equalizer box, or choose
    **Engine → Start Engine**. The first time, macOS asks for permission to
    capture audio. Allow it, since the app cannot equalize audio it cannot hear.
-2. Play something and move the sliders, or pick a preset from the header.
+2. Play something and move the sliders, or pick a preset with the **Presets** button in the same box header.
 3. Choose 10, 15 or 31 bands to trade simplicity for precision. Presets adapt
    to whichever you pick.
 4. Press the power button again to stop. Your Mac's audio returns to normal.
@@ -101,7 +101,8 @@ back that device's saved curve.
 - **File → Save Current as Preset…** saves your curve.
 - **File → Import Preset…** and **Export Selected Preset…** share presets as
   JSON files.
-- The **Presets** button in the header lists every preset and saves, imports,
+- The **Presets** button (beside the power button and Bypass in the Response and
+  Equalizer box headers) lists every preset and saves, imports,
   renames, duplicates, exports and deletes your own. **Reset EQ to Flat** (or
   the **Flat** button) clears the curve.
 - Presets live in `~/Library/Application Support/AudioEqualizer/`. Use

@@ -26,12 +26,10 @@ struct SpectrumView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
+                PowerButton()
                 SectionTitle(text: "Response", systemImage: "waveform.path.ecg")
-
-                Text("Drag to draw the curve · double-click a band to reset it")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.white.opacity(0.36))
-                    .lineLimit(1)
+                PresetMenu()
+                BypassButton()
 
                 Spacer(minLength: 8)
 

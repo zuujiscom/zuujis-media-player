@@ -109,8 +109,6 @@ struct HeaderBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            PowerButton()
-
             VStack(alignment: .leading, spacing: 1) {
                 Text("AE2")
                     .font(.system(size: 14, weight: .semibold))
@@ -123,18 +121,6 @@ struct HeaderBar: View {
 
             PanelToggles()
             DeviceMenu()
-            PresetMenu()
-
-            Button {
-                engine.toggleBypass()
-            } label: {
-                Label("Bypass", systemImage: engine.isBypassed ? "circle.slash.fill" : "circle.slash")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(engine.isBypassed ? Theme.amber : Color.white.opacity(0.85))
-                    .pill(active: engine.isBypassed, tint: Theme.amber)
-            }
-            .buttonStyle(.plain)
-            .help("Hear the audio without the EQ, to compare  (⌘B)")
 
             Button {
                 openWindow(id: AudioEqualizerApp.visualizerWindowID)
@@ -189,10 +175,34 @@ struct HeaderBar: View {
     }
 }
 
+// MARK: - Bypass
+
+/// Hear the audio without the EQ, to compare. Sits with the power button and
+/// presets in the Response and Equalizer boxes.
+struct BypassButton: View {
+    @EnvironmentObject private var engine: AudioEngine
+
+    var body: some View {
+        Button {
+            engine.toggleBypass()
+        } label: {
+            Label("Bypass", systemImage: engine.isBypassed ? "circle.slash.fill" : "circle.slash")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(engine.isBypassed ? Theme.amber : Color.white.opacity(0.85))
+                .pill(active: engine.isBypassed, tint: Theme.amber)
+        }
+        .buttonStyle(.plain)
+        .help("Hear the audio without the EQ, to compare  (⌘B)")
+    }
+}
+
 // MARK: - Power
 
+/// The EQ's master switch. It lives in the Response and Equalizer boxes
+/// because that is all it controls: the system-wide route and the player's EQ.
 struct PowerButton: View {
     @EnvironmentObject private var engine: AudioEngine
+    var size: CGFloat = 26
 
     var body: some View {
         Button {
@@ -205,11 +215,11 @@ struct PowerButton: View {
                     .strokeBorder(engine.isRunning ? Theme.mint.opacity(0.9) : Color.white.opacity(0.18),
                                   lineWidth: 1.5)
                 Image(systemName: "power")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: size * 0.41, weight: .bold))
                     .foregroundStyle(engine.isRunning ? Theme.mint : Color.white.opacity(0.6))
             }
-            .frame(width: 34, height: 34)
-            .shadow(color: engine.isRunning ? Theme.mint.opacity(0.55) : .clear, radius: 8)
+            .frame(width: size, height: size)
+            .shadow(color: engine.isRunning ? Theme.mint.opacity(0.55) : .clear, radius: 6)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
