@@ -6,7 +6,8 @@ import Foundation
 enum AppPaths {
     static let folderName = "Zuujis Media Player"
     /// The app was called AudioEqualizer (bundle `com.zuujis.AudioEqualizer`)
-    /// before the rename; its data is moved over once on first launch.
+    /// before the rename; its data is copied over once on first launch and the old copy is left
+    /// alone, so the old app keeps working.
     static let oldFolderName = "AudioEqualizer"
     static let oldBundleID = "com.zuujis.AudioEqualizer"
 
@@ -23,8 +24,8 @@ enum AppPaths {
         return dir
     }
 
-    /// Moves the old Application Support folder and preferences to the new
-    /// names when the new ones do not exist yet. Must run before any store
+    /// Copies the old Application Support folder and preferences to the new
+    /// names when the new ones do not exist yet. The originals are kept. Must run before any store
     /// reads its file.
     static func migrateFromOldName() {
         #if DEBUG
@@ -35,7 +36,7 @@ enum AppPaths {
         let old = base.appendingPathComponent(oldFolderName, isDirectory: true)
         let new = base.appendingPathComponent(folderName, isDirectory: true)
         if fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) {
-            try? fm.moveItem(at: old, to: new)
+            try? fm.copyItem(at: old, to: new)
         }
         // Old preferences fill in what the new domain lacks, once.
         let defaults = UserDefaults.standard
