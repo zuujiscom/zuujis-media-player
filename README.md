@@ -231,8 +231,8 @@ from your own files and nothing is looked up online.
    Player/Lyrics/` (never beside your music), so each song is asked about once.
    Songs need a title and artist in their tags. A song comes in several cuts
    (radio edit, album, extended) with different timing, so only a version whose
-   length is within 8 seconds of your file is used as synced lyrics, preferring
-   the one for the same album. **Playback → Re-check Saved Online Lyrics** asks
+   length is within 8 seconds of your file is used as synced lyrics, and of
+   those the timing most entries agree on wins (then the same album). **Playback → Re-check Saved Online Lyrics** asks
    again for every saved song and keeps the best match; lyrics saved by an older
    version are cleared and fetched afresh when the song next plays.
 

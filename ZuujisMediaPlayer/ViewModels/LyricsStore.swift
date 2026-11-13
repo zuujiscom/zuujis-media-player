@@ -149,6 +149,8 @@ final class LyricsStore: ObservableObject {
     /// keeps each one's own timing, so a synced version is only used when its
     /// length is close to the file's.
     private nonisolated static let lengthTolerance = 8.0
+    /// Bumped when the choice of version changes, so older saves are refetched.
+    private nonisolated static let cacheRevision = 2
 
     /// Asks lrclib.net for the song, preferring synced lyrics of the cut that
     /// matches this file's length. Returns the lyrics, or nil and a short reason.
@@ -160,6 +162,7 @@ final class LyricsStore: ObservableObject {
            let first = cached.split(separator: "\n", maxSplits: 1).first, first.hasPrefix("[zmp-length:"),
            let length = Double(first.dropFirst(12).dropLast()),
            abs(length - track.duration) <= lengthTolerance,
+           cached.contains("[zmp-rev:\(cacheRevision)]"),
            let lyrics = Lyrics.parse(cached) {
             return (lyrics, nil)
         }
@@ -207,16 +210,35 @@ final class LyricsStore: ObservableObject {
             let other = norm(c["albumName"] as? String)
             return !album.isEmpty && !other.isEmpty && (other.contains(album) || album.contains(other))
         }
-        let best = candidates
-            .filter { synced($0) != nil && abs(length($0) - track.duration) <= lengthTolerance }
-            .min { a, b in
-                let (aa, ab) = (fromThisAlbum(a), fromThisAlbum(b))
-                if aa != ab { return aa }
-                return abs(length(a) - track.duration) < abs(length(b) - track.duration)
-            }
+        // Timing is the thing that differs between entries, and LRCLIB has many
+        // near-duplicates (a radio edit's timing copied onto compilations, a
+        // stray one-off). So group the candidates by where their first line
+        // falls and how many lines they have, and take the group most entries
+        // agree on; within it, the same album, then the nearest length.
+        func firstTime(_ c: [String: Any]) -> Double {
+            guard let text = synced(c), let first = Lyrics.parse(text)?.lines.first?.time else { return -100 }
+            return first
+        }
+        func lineCount(_ c: [String: Any]) -> Int { Lyrics.parse(synced(c) ?? "")?.lines.count ?? 0 }
+        var seen = Set<Int>()
+        let usable = candidates.filter { c in
+            guard synced(c) != nil, abs(length(c) - track.duration) <= lengthTolerance else { return false }
+            if let id = c["id"] as? Int { return seen.insert(id).inserted }
+            return true
+        }
+        func sameTiming(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+            abs(firstTime(a) - firstTime(b)) <= 1.0 && abs(lineCount(a) - lineCount(b)) <= 2
+        }
+        let best = usable.max { a, b in
+            let (ca, cb) = (usable.filter { sameTiming($0, a) }.count, usable.filter { sameTiming($0, b) }.count)
+            if ca != cb { return ca < cb }
+            let (aa, ab) = (fromThisAlbum(a), fromThisAlbum(b))
+            if aa != ab { return !aa }
+            return abs(length(a) - track.duration) > abs(length(b) - track.duration)
+        }
         if let best, let text = synced(best), Lyrics.parse(text) != nil {
             let meta = (try? JSONEncoder().encode(track))?.base64EncodedString() ?? ""
-            let stored = "[zmp-length:\(Int(length(best).rounded()))]\n[zmp-meta:\(meta)]\n" + text
+            let stored = "[zmp-length:\(Int(length(best).rounded()))]\n[zmp-rev:\(cacheRevision)]\n[zmp-meta:\(meta)]\n" + text
             try? stored.write(to: cache, atomically: true, encoding: .utf8)
             return (Lyrics.parse(text), nil)
         }
