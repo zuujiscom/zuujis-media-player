@@ -19,6 +19,11 @@ final class NowPlayingController {
     private let keyTap = MediaKeyTap()
     private var activationObserver: NSObjectProtocol?
 
+    var mediaKeysActive: Bool {
+        keyTap.start(prompt: false) // pick up a grant made since launch
+        return keyTap.isActive
+    }
+
     init(player: PlayerEngine) {
         self.player = player
         registerCommands()
@@ -160,6 +165,9 @@ final class MediaKeyTap {
     var handler: ((Key, Bool) -> Bool)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+
+    /// Whether the tap exists, i.e. Accessibility access was granted.
+    var isActive: Bool { tap != nil }
     private static let promptedKey = "mediaKeysAccessibilityPrompted"
 
     func start(prompt: Bool) {

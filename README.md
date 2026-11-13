@@ -99,17 +99,19 @@ back that device's saved curve.
 - **File → Save Current as Preset…** saves your curve.
 - **File → Import Preset…** and **Export Selected Preset…** share presets as
   JSON files.
-- The row of chips above the graph applies a preset in one click; **+** saves
-  the current curve. Right-click one of your own to rename, export or delete it.
-- The **Presets** menu lists every preset, and **Reset EQ to Flat** (or the
-  **Flat** button) clears the curve.
+- The **Presets** button in the header lists every preset and saves, imports,
+  renames, duplicates, exports and deletes your own. **Reset EQ to Flat** (or
+  the **Flat** button) clears the curve.
 - Presets live in `~/Library/Application Support/AudioEqualizer/`. Use
   **File → Reveal Presets File in Finder** to get there.
 
 ### Player
 
-The bar along the bottom plays audio files through the same EQ, separately from
-the system route, so it works whether or not the engine is running.
+The bar under the header plays audio files through the same EQ. It follows the
+same controls as everything else: the faders, presets, master gain and Bypass
+shape it, and the **power button switches the EQ on and off**, so with the
+engine off the player plays flat. It uses its own audio path, separate from the
+system route, so it never processes your other audio twice.
 
 - **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the playlist and
   plays; **Add to Playlist…** (⌥⌘O) appends. **Show Playlist** is ⇧⌘L.

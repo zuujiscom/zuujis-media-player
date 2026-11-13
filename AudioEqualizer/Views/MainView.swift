@@ -11,13 +11,14 @@ struct MainView: View {
         VStack(spacing: 0) {
             HeaderBar()
             Rectangle().fill(Theme.hairline).frame(height: 1)
+            PlayerBar()
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             // The graph and the faders stretch to fill whatever height the
             // window has; the scroll view only matters once the band details
             // table is open and the content outgrows it.
             GeometryReader { geo in
                 ScrollView {
                     VStack(spacing: 14) {
-                        PresetChips()
                         SpectrumView()
                         BandControlsView()
                             .frame(maxWidth: .infinity)
@@ -26,8 +27,6 @@ struct MainView: View {
                     .frame(minHeight: geo.size.height)
                 }
             }
-            Rectangle().fill(Theme.hairline).frame(height: 1)
-            PlayerBar()
         }
         // Dropping audio files or a folder anywhere on the window plays them.
         .dropDestination(for: URL.self) { urls, _ in

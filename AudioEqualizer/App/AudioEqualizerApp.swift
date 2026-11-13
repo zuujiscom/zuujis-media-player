@@ -216,6 +216,17 @@ struct AudioEqualizerApp: App {
 
                 Divider()
 
+                if player.mediaKeysActive {
+                    Text("Media keys: captured")
+                } else {
+                    Button("Media keys need Accessibility access…") {
+                        NSWorkspace.shared.open(URL(string:
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
+                }
+
+                Divider()
+
                 Button("Volume Up") { player.volume = min(1, player.volume + 0.1) }
                     .keyboardShortcut(.upArrow, modifiers: [.command])
                 Button("Volume Down") { player.volume = max(0, player.volume - 0.1) }

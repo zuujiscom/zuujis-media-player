@@ -3,7 +3,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The transport strip along the bottom of the main window: cover, title and
+/// The transport strip along the top of the main window, under the header: cover, title and
 /// format on the left, play and the scrubber in the middle, volume and Open on
 /// the right. With nothing loaded it is a single "Open a song" prompt.
 struct PlayerBar: View {

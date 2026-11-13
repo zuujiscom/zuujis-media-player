@@ -212,10 +212,11 @@ final class PlayerEngine: ObservableObject {
 
         // `@Published` fires before the value is stored, so hop a run-loop turn
         // and read the settled values.
-        Publishers.Merge3(
+        Publishers.Merge4(
             equalizer.$bands.map { _ in () },
             equalizer.$isBypassed.map { _ in () },
-            equalizer.$masterGain.map { _ in () }
+            equalizer.$masterGain.map { _ in () },
+            equalizer.$isRunning.map { _ in () }
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] in
@@ -257,6 +258,9 @@ final class PlayerEngine: ObservableObject {
     }
 
     private var nowPlaying: NowPlayingController?
+
+    /// Whether the keyboard's media keys are being captured (needs Accessibility).
+    var mediaKeysActive: Bool { nowPlaying?.mediaKeysActive ?? false }
 
     /// After a relaunch the queue remembers what was playing; show it in the
     /// bar, ready to resume, without starting any audio.
@@ -670,9 +674,13 @@ final class PlayerEngine: ObservableObject {
             f.frequency = Float(band.frequency)
             f.gain = Float(band.gain)
             f.bandwidth = Float(band.bandwidth)
-            f.bypass = !band.isEnabled || equalizer.isBypassed
+            f.bypass = !band.isEnabled || equalizer.isBypassed || !equalizer.isRunning
         }
-        eqNode.globalGain = Float(min(24, max(-96, equalizer.amplificationDB)))
+        // The power button is the EQ's master switch: with the engine off the
+        // player plays flat, gain included.
+        eqNode.globalGain = equalizer.isRunning
+            ? Float(min(24, max(-96, equalizer.amplificationDB)))
+            : 0
     }
 
     // MARK: - Metering
