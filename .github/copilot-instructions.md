@@ -1,4 +1,4 @@
-# Audio Equalizer instructions
+# Zuujis Media Player instructions
 
 Before changing this project, read [the repository agent guide](../AGENTS.md). It describes the SwiftUI structure, Core Audio data flow, build command, and realtime-audio safety rules.
 

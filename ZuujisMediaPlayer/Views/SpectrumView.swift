@@ -95,9 +95,9 @@ struct SpectrumView: View {
                 }
             }
             .frame(minHeight: 190, idealHeight: 250, maxHeight: .infinity)
-            .background(Theme.well)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+            .background(Theme.well.opacity(Theme.palette.isLight ? 1 : 0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
         }
         .card()
     }
@@ -158,7 +158,7 @@ struct SpectrumView: View {
             )
         } else if !engine.isRunning {
             context.draw(
-                Text("ENGINE OFF").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.ink.opacity(0.3)),
+                Text("EQ OFF").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.ink.opacity(0.3)),
                 at: CGPoint(x: plot.maxX - 6, y: plot.minY + 6), anchor: .topTrailing
             )
         }

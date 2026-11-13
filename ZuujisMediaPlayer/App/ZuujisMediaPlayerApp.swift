@@ -3,18 +3,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// AppKit re-adds View and Help after SwiftUI builds the menu bar, so
-/// `CommandGroup(replacing:)` cannot remove them — they have to be pulled off
-/// `NSApp.mainMenu` directly.
-///
-/// Stripping once at launch is not enough: SwiftUI rebuilds the entire main
-/// menu whenever `.commands` re-evaluates, and the Engine menu's title depends
-/// on `isRunning`, so a rebuild lands every time the engine starts or stops and
-/// both menus come back. The strip therefore re-runs on the application update
-/// notification, guarded by an item count so the common case is one compare.
+/// Receives files opened from Finder and flushes debounced saves on quit.
+/// View and Help used to be stripped from the menu bar here; both now carry
+/// real items (panel switches and themes; the guide), so they stay.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var strippedItemCount = -1
-
     /// Where files opened from Finder (double-click, Open With, drop on the
     /// Dock icon) go. Set once the player exists; files that arrive earlier
     /// (launching by double-clicking a song) wait in `pendingOpens`.
@@ -56,26 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        stripMenus()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(stripMenus),
-            name: NSApplication.didUpdateNotification,
-            object: nil
-        )
-    }
-
-    @objc private func stripMenus() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        guard mainMenu.items.count != strippedItemCount else { return }
-
-        for title in ["View", "Help"] {
-            if let item = mainMenu.items.first(where: { $0.title == title }) {
-                mainMenu.removeItem(item)
-            }
-        }
-        NSApp.helpMenu = nil
-        strippedItemCount = mainMenu.items.count
+        // One main window, no tabs: this also keeps "Show Tab Bar" and
+        // "Show All Tabs" out of the View menu.
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 }
 
@@ -92,6 +67,10 @@ struct ZuujisMediaPlayerApp: App {
     @StateObject private var player = PlayerEngine()
     @StateObject private var library = LibraryStore()
     @StateObject private var playlists = PlaylistStore()
+    // The View menu drives the same saved switches as the header buttons.
+    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.eq) private var eqPanel = Panels.response
+    @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
     var body: some Scene {
         WindowGroup {
@@ -138,123 +117,85 @@ struct ZuujisMediaPlayerApp: App {
         // Files opened from Finder reuse this window instead of making new ones.
         .handlesExternalEvents(matching: ["*"])
         .commands {
-            // File: an EQ has no documents and no second window, so the
-            // stock New/Open items are replaced with preset I/O.
-            CommandGroup(replacing: .newItem) {
-                Button("Save Current as Preset…") {
-                    PresetActions.saveCurrent(bands: audioEngine.bands, in: presetManager)
-                }
-                .keyboardShortcut("s", modifiers: [.command])
-
-                Button("Import Preset…") {
-                    PresetActions.importPreset(into: presetManager)
-                }
-                .keyboardShortcut("o", modifiers: [.command])
-
-                Button("Export Selected Preset…") {
-                    if let preset = presetManager.selectedPreset {
-                        PresetActions.export(preset, from: presetManager)
-                    }
-                }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(presetManager.selectedPreset == nil)
-
-                Divider()
-
-                Button("Import MilkDrop Presets…") {
-                    importMilkdropPresets()
-                }
-
-                Button("Reveal MilkDrop Folder") {
-                    NSWorkspace.shared.open(milkdropLibrary.folderURL)
+            // App menu.
+            CommandGroup(replacing: .appInfo) {
+                Button("About Zuujis Media Player") {
+                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                        .applicationName: "Zuujis Media Player",
+                        .credits: NSAttributedString(
+                            string: "A lossless music player with a system-wide equalizer and a visualizer.",
+                            attributes: [.font: NSFont.systemFont(ofSize: 11),
+                                         .foregroundColor: NSColor.secondaryLabelColor])
+                    ])
                 }
 
                 Divider()
 
-                Button("Reveal Presets File in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([presetManager.presetsFileURL])
+                Button("Make Default Audio Player…") {
+                    DefaultPlayer.makeDefault()
                 }
             }
 
-            // View and Help are removed in AppDelegate; About moves to the
-            // app menu, where it belongs.
+            // File: what a player opens. Presets live in the Equalizer menu.
+            CommandGroup(replacing: .newItem) {
+                Button("Open Files or Folder…") {
+                    PlayerActions.openFiles(in: player)
+                }
+                .keyboardShortcut("o", modifiers: [.command])
+
+                Button("Add to Queue…") {
+                    PlayerActions.addToQueue(in: player)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Add Music Folder to Library…") {
+                    LibraryActions.addFolder(to: library)
+                }
+
+                Button("Rescan Library") { library.rescan() }
+                    .disabled(library.folders.isEmpty || library.isScanning)
+            }
 
             // Nothing here registers an undo manager, so Undo/Redo were inert.
             // The pasteboard items stay — they are what makes ⌘V work in the
             // preset name and rename dialogs.
             CommandGroup(replacing: .undoRedo) { }
-            CommandGroup(replacing: .appInfo) {
-                Button("About Zuujis Media Player") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(
-                        options: [
-                            .applicationName: "Zuujis Media Player",
-                            .applicationVersion: "1.0.0",
-                            .version: "1",
-                            .credits: NSAttributedString(string: "Native macOS Equalizer for Apple Silicon")
-                        ]
-                    )
-                }
-            }
 
-            CommandMenu("Presets") {
-                Section("Built-in") {
-                    ForEach(Array(EQPreset.allBuiltin.enumerated()), id: \.element.id) { index, preset in
-                        Button(preset.name) {
-                            presetManager.selectedPresetID = preset.id
-                            audioEngine.applyPreset(preset)
-                        }
-                        .keyboardShortcut(shortcut(for: index), modifiers: [.command])
-                    }
-                }
-
-                if !presetManager.customPresets.isEmpty {
-                    Section("Custom") {
-                        ForEach(presetManager.customPresets) { preset in
-                            Button(preset.name) {
-                                presetManager.selectedPresetID = preset.id
-                                audioEngine.applyPreset(preset)
-                            }
-                        }
-                    }
-                }
+            // View: the system menu keeps Enter Full Screen; these go above it.
+            CommandGroup(before: .toolbar) {
+                Toggle("Library", isOn: $showLibrary)
+                    .keyboardShortcut("l", modifiers: [.command])
+                Toggle("Response Graph", isOn: eqPanelBinding(Panels.response))
+                    .keyboardShortcut("g", modifiers: [.command])
+                Toggle("Equalizer Faders", isOn: eqPanelBinding(Panels.equalizer))
+                    .keyboardShortcut("e", modifiers: [.command])
 
                 Divider()
-
-                Button("Reset EQ to Flat") {
-                    audioEngine.resetToFlat()
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-            }
-
-            CommandMenu("Player") {
-                Button("Open Audio Files or Folder…") {
-                    PlayerActions.openFiles(in: player)
-                }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
-
-                Button("Add to Queue…") {
-                    PlayerActions.addToQueue(in: player)
-                }
-                .keyboardShortcut("o", modifiers: [.command, .option])
-
-                Button(player.track.map { playlists.isFavorite($0.url.path) } == true
-                       ? "Remove Current Song from Favorites" : "Add Current Song to Favorites") {
-                    if let track = player.track { playlists.toggleFavorite(track.url.path) }
-                }
-                .keyboardShortcut("d", modifiers: [.command])
-                .disabled(player.track == nil)
-
-                Button("Make Zuujis Media Player the Default Player…") {
-                    DefaultPlayer.makeDefault()
-                }
 
                 Button("Show Queue") {
                     openWindow(id: Self.playlistWindowID)
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
 
+                Button("Open Visualizer") {
+                    openVisualizerWindow()
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
+
                 Divider()
 
+                Picker("Theme", selection: $themeID) {
+                    ForEach(ThemePalette.all) { palette in
+                        Text(palette.name).tag(palette.id)
+                    }
+                }
+
+                Divider()
+            }
+
+            CommandMenu("Playback") {
                 Button(player.state == .playing ? "Pause" : "Play") {
                     player.togglePlayPause()
                 }
@@ -277,24 +218,13 @@ struct ZuujisMediaPlayerApp: App {
                     .keyboardShortcut(.leftArrow, modifiers: [.command])
                     .disabled(player.state == .stopped)
 
-                Button("Back 10 Seconds") { player.skip(by: -10) }
-                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-                    .disabled(player.state == .stopped)
-
                 Button("Forward 10 Seconds") { player.skip(by: 10) }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                     .disabled(player.state == .stopped)
 
-                Divider()
-
-                if player.mediaKeysActive {
-                    Text("Media keys: captured")
-                } else {
-                    Button("Media keys need Accessibility access…") {
-                        NSWorkspace.shared.open(URL(string:
-                            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                    }
-                }
+                Button("Back 10 Seconds") { player.skip(by: -10) }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                    .disabled(player.state == .stopped)
 
                 Divider()
 
@@ -314,20 +244,98 @@ struct ZuujisMediaPlayerApp: App {
                     Text("Queue").tag(PlaybackQueue.Repeat.all)
                     Text("Track").tag(PlaybackQueue.Repeat.one)
                 }
+
+                Divider()
+
+                Button(player.track.map { playlists.isFavorite($0.url.path) } == true
+                       ? "Remove Current Song from Favorites" : "Add Current Song to Favorites") {
+                    if let track = player.track { playlists.toggleFavorite(track.url.path) }
+                }
+                .keyboardShortcut("d", modifiers: [.command])
+                .disabled(player.track == nil)
+
+                Divider()
+
+                Toggle("Match Output Rate to Each Track", isOn: Binding(
+                    get: { player.matchSampleRate }, set: { player.matchSampleRate = $0 }))
+                Toggle("Exclusive Output", isOn: Binding(
+                    get: { player.exclusiveMode }, set: { player.exclusiveMode = $0 }))
+
+                Divider()
+
+                if player.mediaKeysActive {
+                    Text("Media Keys: Captured")
+                } else {
+                    Button("Allow Media Keys in Accessibility Settings…") {
+                        NSWorkspace.shared.open(URL(string:
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
+                }
             }
 
-            CommandMenu("Engine") {
-                Button(audioEngine.isRunning ? "Stop Engine" : "Start Engine") {
+            CommandMenu("Equalizer") {
+                Button(audioEngine.isRunning ? "Turn Equalizer Off" : "Turn Equalizer On") {
                     audioEngine.isRunning ? audioEngine.stop() : audioEngine.start()
                 }
                 .keyboardShortcut(.return, modifiers: [.command])
 
-                Divider()
-
-                Button(audioEngine.isBypassed ? "Turn Bypass Off" : "Bypass EQ") {
+                Button(audioEngine.isBypassed ? "Turn Bypass Off" : "Bypass") {
                     audioEngine.toggleBypass()
                 }
                 .keyboardShortcut("b", modifiers: [.command])
+
+                Button("Reset to Flat") {
+                    audioEngine.resetToFlat()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Divider()
+
+                Picker("Bands", selection: Binding(
+                    get: { audioEngine.bands.count },
+                    set: { count in DispatchQueue.main.async { audioEngine.setBandCount(count) } })) {
+                    Text("10 Bands").tag(10)
+                    Text("15 Bands").tag(15)
+                    Text("31 Bands").tag(31)
+                }
+
+                Menu("Presets") {
+                    Section("Built-in") {
+                        ForEach(Array(EQPreset.allBuiltin.enumerated()), id: \.element.id) { index, preset in
+                            presetItem(preset, shortcutIndex: index)
+                        }
+                    }
+                    if !presetManager.customPresets.isEmpty {
+                        Section("Custom") {
+                            ForEach(presetManager.customPresets) { preset in
+                                presetItem(preset, shortcutIndex: nil)
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button("Save Current as Preset…") {
+                    PresetActions.saveCurrent(bands: audioEngine.bands, in: presetManager)
+                }
+                .keyboardShortcut("s", modifiers: [.command])
+
+                Button("Import Preset…") {
+                    PresetActions.importPreset(into: presetManager)
+                }
+
+                Button("Export Selected Preset…") {
+                    if let preset = presetManager.selectedPreset {
+                        PresetActions.export(preset, from: presetManager)
+                    }
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(presetManager.selectedPreset == nil)
+
+                Button("Reveal Presets File in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([presetManager.presetsFileURL])
+                }
 
                 Divider()
 
@@ -336,15 +344,11 @@ struct ZuujisMediaPlayerApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Divider()
-
                 Button("Copy Diagnostics") {
                     let text = audioEngine.diagnosticsReport()
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
                 }
-
-                Divider()
 
                 Section("Output") {
                     Text(audioEngine.outputFormat)
@@ -355,9 +359,6 @@ struct ZuujisMediaPlayerApp: App {
                 Button("Open Visualizer") {
                     openVisualizerWindow()
                 }
-                .keyboardShortcut("v", modifiers: [.command, .shift])
-
-                Divider()
 
                 // Selecting a mode also opens the window, so the menu works as
                 // a launcher rather than only as a switch for a window already
@@ -370,8 +371,21 @@ struct ZuujisMediaPlayerApp: App {
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
 
+                Divider()
+
+                // One submenu per family: fifty modes in one flat list ran off
+                // the bottom of the screen.
+                ForEach(VisualizerMode.groups) { group in
+                    Menu(group.id) {
+                        ForEach(group.modes) { mode in
+                            visualizerItem(mode)
+                        }
+                    }
+                }
+
+                Divider()
+
                 if !milkdropLibrary.isEmpty {
-                    Divider()
                     Menu("MilkDrop (\(milkdropLibrary.presets.count))") {
                         ForEach(milkdropLibrary.presets.prefix(60), id: \.name) { preset in
                             Button(preset.name) {
@@ -383,21 +397,20 @@ struct ZuujisMediaPlayerApp: App {
                     }
                 }
 
-                Divider()
-
-                ForEach(VisualizerMode.groups) { group in
-                    Section(group.id) {
-                        ForEach(group.modes) { mode in
-                            Button {
-                                UserDefaults.standard.set(mode.rawValue, forKey: VisualizerMode.storageKey)
-                                openVisualizerWindow()
-                            } label: {
-                                Text(mode.rawValue)
-                            }
-                            .keyboardShortcut(mode.shortcut ?? "0", modifiers: [.command, .option])
-                        }
-                    }
+                Button("Import MilkDrop Presets…") {
+                    importMilkdropPresets()
                 }
+
+                Button("Reveal MilkDrop Folder") {
+                    NSWorkspace.shared.open(milkdropLibrary.folderURL)
+                }
+            }
+
+            CommandGroup(replacing: .help) {
+                Link("Zuujis Media Player Guide",
+                     destination: URL(string: "https://github.com/zuujiscom/zuujis-media-player#readme")!)
+                Link("Report a Problem",
+                     destination: URL(string: "https://github.com/zuujiscom/zuujis-media-player/issues")!)
             }
         }
 
@@ -425,6 +438,43 @@ struct ZuujisMediaPlayerApp: App {
         openWindow(id: Self.visualizerWindowID)
     }
 
+    /// The response graph and the faders are one or the other; switching the
+    /// one that shows off hides the EQ panel.
+    private func eqPanelBinding(_ value: String) -> Binding<Bool> {
+        Binding(get: { eqPanel == value },
+                set: { eqPanel = $0 ? value : Panels.hidden })
+    }
+
+    /// A preset as a checkable menu item; the first nine built-ins get ⌘1…⌘9.
+    @ViewBuilder
+    private func presetItem(_ preset: EQPreset, shortcutIndex: Int?) -> some View {
+        let item = Toggle(preset.name, isOn: Binding(
+            get: { presetManager.selectedPresetID == preset.id },
+            set: { _ in
+                presetManager.selectedPresetID = preset.id
+                audioEngine.applyPreset(preset)
+            }))
+        if let index = shortcutIndex, index < 9 {
+            item.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+        } else {
+            item
+        }
+    }
+
+    /// A visualizer mode; the first ten get ⌥⌘1…⌥⌘0, the rest are click-only.
+    @ViewBuilder
+    private func visualizerItem(_ mode: VisualizerMode) -> some View {
+        let item = Button(mode.rawValue) {
+            UserDefaults.standard.set(mode.rawValue, forKey: VisualizerMode.storageKey)
+            openVisualizerWindow()
+        }
+        if let key = mode.shortcut {
+            item.keyboardShortcut(key, modifiers: [.command, .option])
+        } else {
+            item
+        }
+    }
+
     /// Accepts folders as well as files — preset packs arrive as directories of
     /// hundreds of `.milk` files, and picking them one at a time is no use.
     private func importMilkdropPresets() {
@@ -440,13 +490,6 @@ struct ZuujisMediaPlayerApp: App {
         }
     }
 }
-
-/// ⌘1…⌘9 for the first nine built-ins; the rest are click-only.
-private func shortcut(for index: Int) -> KeyEquivalent {
-    let digits: [KeyEquivalent] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    return index < digits.count ? digits[index] : .init("\0")
-}
-
 
 /// Makes Zuujis Media Player the app Finder opens sound files with. Runs only when the user
 /// chooses the menu item; macOS may ask them to confirm.

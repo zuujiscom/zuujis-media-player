@@ -40,16 +40,24 @@ struct PresetMenu: View {
             }
             Button("Import…") { PresetActions.importPreset(into: presets) }
         } label: {
-            Label("Presets", systemImage: "square.stack.3d.up")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.ink.opacity(0.85))
-                .pill()
+            HStack(spacing: 6) {
+                Image(systemName: "square.stack.3d.up")
+                Text(presets.selectedPreset?.name ?? "Presets")
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.ink.opacity(0.4))
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(Theme.ink.opacity(0.85))
+            .frame(maxWidth: 190)
+            .pill()
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Save, import and manage presets")
+        .help("Choose, save, import and manage presets")
     }
 
     private func presetButton(_ preset: EQPreset) -> some View {
@@ -74,16 +82,9 @@ struct StatusMenu: View {
     @State private var showStatus = false
 
     var body: some View {
-        Button {
+        IconButton(symbol: "info", glyph: 12, active: showStatus) {
             showStatus.toggle()
-        } label: {
-            Image(systemName: "info.circle")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Theme.ink.opacity(0.6))
-                .frame(width: 28, height: 30)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .help("Engine status")
         .popover(isPresented: $showStatus, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
@@ -91,11 +92,11 @@ struct StatusMenu: View {
                     .font(.headline)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    statusRow("Engine", engine.isRunning ? "Running" : "Stopped", engine.isRunning ? .green : .secondary)
-                    statusRow("Bypass", engine.isBypassed ? "Active" : "Off", engine.isBypassed ? .orange : .secondary)
+                    statusRow("Equalizer", engine.isRunning ? "On" : "Off", engine.isRunning ? Theme.mint : .secondary)
+                    statusRow("Bypass", engine.isBypassed ? "Active" : "Off", engine.isBypassed ? Theme.amber : .secondary)
                     statusRow("Input", engine.inputFormat, .secondary)
                     statusRow("Output", engine.outputFormat, .secondary)
-                    statusRow("Master Gain", String(format: "%.2fx (%+0.1f dB)", engine.masterGain, engine.amplificationDB), engine.masterGain > 1 ? .green : .secondary)
+                    statusRow("Master Gain", String(format: "%.2fx (%+0.1f dB)", engine.masterGain, engine.amplificationDB), engine.masterGain > 1 ? Theme.mint : .secondary)
                 }
                 .font(.system(size: 11))
 
@@ -104,7 +105,7 @@ struct StatusMenu: View {
                 HStack {
                     Spacer()
 
-                    Button(engine.isRunning ? "Stop Engine" : "Start Engine") {
+                    Button(engine.isRunning ? "Turn Equalizer Off" : "Turn Equalizer On") {
                         engine.isRunning ? engine.stop() : engine.start()
                     }
                     .controlSize(.small)

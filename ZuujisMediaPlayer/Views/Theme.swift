@@ -36,6 +36,27 @@ enum Theme {
 
     static var signalColors: [Color] { [cyan, violet, pink] }
 
+    /// Text and glyphs drawn on top of the signal gradient. The dark themes'
+    /// accents are bright, so they take near-black; Light's are deep, so white.
+    static var onSignal: Color { palette.isLight ? .white : Color.black.opacity(0.82) }
+
+    /// The signal gradient sampled at `t` (0 = first colour, 1 = last).
+    static func signalColor(at t: Double) -> Color {
+        let clamped = min(1, max(0, t))
+        return clamped < 0.5 ? cyan.mix(with: violet, by: clamped * 2)
+                             : violet.mix(with: pink, by: (clamped - 0.5) * 2)
+    }
+
+    /// A stable colour for a name (an artist, an album): the same name always
+    /// lands on the same point of the signal gradient. `hashValue` is seeded
+    /// per launch, so this folds the scalars itself.
+    static func tint(for name: String) -> Color {
+        var hash: UInt32 = 5381
+        for scalar in name.unicodeScalars { hash = hash &* 33 &+ scalar.value }
+        // Six evenly spaced stops: neighbours in a list should look different.
+        return signalColor(at: Double(hash % 6) / 5)
+    }
+
     static var signal: LinearGradient {
         LinearGradient(colors: signalColors, startPoint: .leading, endPoint: .trailing)
     }
@@ -54,22 +75,28 @@ enum Theme {
 
 extension View {
     /// The raised panel every section of the main window sits on.
-    func card(padding: CGFloat = 14) -> some View {
+    func card(padding: CGFloat = 16) -> some View {
         self
             .padding(padding)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.cardFill))
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Theme.palette.isLight
+                          ? AnyShapeStyle(Color.white.opacity(0.74))
+                          : AnyShapeStyle(LinearGradient(colors: [Theme.ink.opacity(0.065), Theme.ink.opacity(0.030)],
+                                                         startPoint: .top, endPoint: .bottom)))
+            )
             // Lit from above: the rim is brighter at the top edge.
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(
-                LinearGradient(colors: Theme.palette.isLight ? [Color.white, Theme.ink.opacity(0.08)] : [Color.white.opacity(0.17), Color.white.opacity(0.04)],
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(
+                LinearGradient(colors: Theme.palette.isLight ? [Color.white, Theme.ink.opacity(0.08)] : [Color.white.opacity(0.18), Color.white.opacity(0.035)],
                                startPoint: .top, endPoint: .bottom)
             ))
-            .shadow(color: .black.opacity(Theme.palette.isLight ? 0.10 : 0.28), radius: 14, y: 6)
+            .shadow(color: .black.opacity(Theme.palette.isLight ? 0.10 : 0.32), radius: 18, y: 8)
     }
 
     /// A small rounded control surface for the header's menus and toggles.
     func pill(active: Bool = false, tint: Color = Theme.cyan) -> some View {
         self
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 12)
             .frame(height: 30)
             .background(
                 Capsule().fill(active ? tint.opacity(0.16) : Theme.ink.opacity(0.06))
@@ -78,6 +105,221 @@ extension View {
                 Capsule().strokeBorder(active ? tint.opacity(0.55) : Theme.ink.opacity(0.10))
             )
             .contentShape(Capsule())
+    }
+}
+
+// MARK: - Controls
+
+/// A round icon button that lights up under the pointer. `active` tints it
+/// (a mode that is on); `prominent` gives it a resting surface.
+struct IconButton: View {
+    let symbol: String
+    var size: CGFloat = 30
+    var glyph: CGFloat = 13
+    var active = false
+    var tint: Color = Theme.cyan
+    var prominent = true
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: glyph, weight: .semibold))
+                .foregroundStyle(active ? tint : Theme.ink.opacity(hovering ? 0.95 : 0.62))
+                .frame(width: size, height: size)
+                .background(Circle().fill(active ? tint.opacity(hovering ? 0.24 : 0.16)
+                                                 : Theme.ink.opacity(hovering ? 0.13 : (prominent ? 0.06 : 0))))
+                .overlay(Circle().strokeBorder(active ? tint.opacity(0.5)
+                                                      : Theme.ink.opacity(prominent ? 0.10 : 0)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+/// A slim horizontal slider drawn in the signal colours: the fill glows, and
+/// the thumb appears under the pointer. Replaces the stock `Slider` wherever
+/// the system accent colour would break the theme.
+struct GlowSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0...1
+    var step: Double?
+    var colors: [Color] = Theme.signalColors
+    var isEnabled = true
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    @State private var hovering = false
+    @State private var dragging = false
+
+    private static let knob: CGFloat = 12
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let span = range.upperBound - range.lowerBound
+            let fraction = span > 0 ? CGFloat((min(max(value, range.lowerBound), range.upperBound) - range.lowerBound) / span) : 0
+            let x = Self.knob / 2 + max(0, width - Self.knob) * fraction
+            let thick: CGFloat = hovering || dragging ? 5 : 4
+            let lit = isEnabled && fraction > 0.001
+
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.ink.opacity(0.12))
+                    .frame(height: thick)
+                // The gradient is laid out across the whole track and the fill
+                // reveals it, so a colour always sits at the same position.
+                Capsule()
+                    .fill(LinearGradient(colors: colors, startPoint: .leading,
+                                         endPoint: UnitPoint(x: width / max(x, 1), y: 0.5)))
+                    .frame(width: lit ? x : 0, height: thick)
+                    .shadow(color: Theme.signalColor(at: Double(fraction)).opacity(lit ? 0.5 : 0), radius: 5)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: Self.knob, height: Self.knob)
+                    .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                    .scaleEffect(hovering || dragging ? 1 : 0.4)
+                    .opacity(hovering || dragging ? 1 : 0)
+                    .position(x: x, y: geo.size.height / 2)
+            }
+            .frame(width: width, height: geo.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        if !dragging {
+                            dragging = true
+                            onEditingChanged(true)
+                        }
+                        set(at: drag.location.x, width: width)
+                    }
+                    .onEnded { _ in
+                        dragging = false
+                        onEditingChanged(false)
+                    }
+            )
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovering)
+        }
+        .frame(height: 18)
+        .opacity(isEnabled ? 1 : 0.45)
+        .allowsHitTesting(isEnabled)
+        .accessibilityElement()
+        .accessibilityValue(String(format: "%.0f percent",
+                                   (value - range.lowerBound) / max(range.upperBound - range.lowerBound, 0.0001) * 100))
+        .accessibilityAdjustableAction { direction in
+            let nudge = (range.upperBound - range.lowerBound) / 20
+            switch direction {
+            case .increment: value = min(range.upperBound, value + nudge)
+            case .decrement: value = max(range.lowerBound, value - nudge)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func set(at x: CGFloat, width: CGFloat) {
+        let usable = max(1, width - Self.knob)
+        let fraction = Double(min(max((x - Self.knob / 2) / usable, 0), 1))
+        var next = range.lowerBound + fraction * (range.upperBound - range.lowerBound)
+        if let step, step > 0 { next = (next / step).rounded() * step }
+        next = min(max(next, range.lowerBound), range.upperBound)
+        if next != value { value = next }
+    }
+}
+
+/// A segmented choice in the app's own colours: the selection is a capsule of
+/// the signal gradient that slides between the options.
+struct SegmentedPills<Value: Hashable>: View {
+    let options: [(value: Value, label: String)]
+    @Binding var selection: Value
+    var height: CGFloat = 24
+    var horizontalPadding: CGFloat = 12
+    @Namespace private var namespace
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.value) { option in
+                let on = option.value == selection
+                Button {
+                    withAnimation(.spring(duration: 0.28, bounce: 0.18)) { selection = option.value }
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: 11.5, weight: on ? .semibold : .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(on ? Theme.onSignal : Theme.ink.opacity(0.62))
+                        .padding(.horizontal, horizontalPadding)
+                        .frame(height: height)
+                        .background {
+                            if on {
+                                Capsule().fill(Theme.signal)
+                                    .shadow(color: Theme.violet.opacity(0.45), radius: 6, y: 1)
+                                    .matchedGeometryEffect(id: "selection", in: namespace)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Theme.ink.opacity(0.06)))
+        .overlay(Capsule().strokeBorder(Theme.ink.opacity(0.09)))
+        .fixedSize()
+    }
+}
+
+/// A small coloured tile standing in for a picture: an artist's initial in a
+/// circle, an album's in a rounded square, or a symbol. The colour comes from
+/// the name, so each keeps its own.
+struct Monogram: View {
+    enum Shape { case circle, square }
+    let name: String
+    var symbol: String?
+    var shape: Shape = .circle
+    var size: CGFloat = 22
+    /// Neutral tiles (the "All …" rows) take no colour of their own.
+    var neutral = false
+
+    var body: some View {
+        let tint = neutral ? Theme.ink.opacity(0.5) : Theme.tint(for: name)
+        let fill = LinearGradient(colors: [tint.opacity(neutral ? 0.22 : 0.95), tint.opacity(neutral ? 0.10 : 0.45)],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        ZStack {
+            switch shape {
+            case .circle: Circle().fill(fill)
+            case .square: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).fill(fill)
+            }
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.46, weight: .semibold))
+                    .foregroundStyle(neutral ? Theme.ink.opacity(0.75) : Theme.onSignal)
+            } else {
+                Text(String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                    .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.onSignal)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// The background of a list row: selected, current, or under the pointer.
+struct RowHighlight: ViewModifier {
+    var isSelected = false
+    var isCurrent = false
+    var cornerRadius: CGFloat = 7
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(isSelected ? Theme.cyan.opacity(0.20)
+                          : (isCurrent ? Theme.ink.opacity(hovering ? 0.10 : 0.07)
+                             : Theme.ink.opacity(hovering ? 0.055 : 0)))
+            )
+            .onHover { hovering = $0 }
     }
 }
 
@@ -196,11 +438,8 @@ struct ThemeMenu: View {
     var body: some View {
         Menu {
             ForEach(ThemePalette.all) { palette in
-                Button {
-                    themeID = palette.id
-                } label: {
-                    if palette.id == themeID { Label(palette.name, systemImage: "checkmark") } else { Text(palette.name) }
-                }
+                Toggle(palette.name, isOn: Binding(get: { palette.id == themeID },
+                                                   set: { _ in themeID = palette.id }))
             }
         } label: {
             Image(systemName: "paintpalette")
@@ -209,8 +448,10 @@ struct ThemeMenu: View {
                 .frame(width: 30, height: 30)
                 .background(Circle().fill(Theme.ink.opacity(0.06)))
                 .overlay(Circle().strokeBorder(Theme.ink.opacity(0.10)))
+                .contentShape(Circle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Choose a colour theme")

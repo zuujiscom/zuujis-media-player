@@ -14,23 +14,24 @@ struct MainView: View {
         let _ = Theme.apply(themeID)
         VStack(spacing: 0) {
             HeaderBar()
-            Rectangle().fill(Theme.hairline).frame(height: 1)
             PlayerBar()
-            Rectangle().fill(Theme.hairline).frame(height: 1)
             // The graph and the faders stretch to fill whatever height the
             // window has; the scroll view only matters once the band details
             // table is open and the content outgrows it.
             GeometryReader { geo in
                 ScrollView {
                     VStack(spacing: 14) {
-                        if showLibrary { LibraryView() }
+                        if showLibrary { LibraryView(fillsHeight: eqPanel == Panels.hidden) }
                         if eqPanel == Panels.response { SpectrumView() }
                         if eqPanel == Panels.equalizer {
                             BandControlsView()
                                 .frame(maxWidth: .infinity)
                         }
+                        if !showLibrary && eqPanel == Panels.hidden { AllPanelsHidden() }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 16)
                     .frame(minHeight: geo.size.height)
                 }
             }
@@ -46,8 +47,16 @@ struct MainView: View {
         // Up into the hidden title bar, so the header shares its row with
         // the traffic lights instead of sitting under an empty strip.
         .ignoresSafeArea(.container, edges: .top)
-        .background(AmbientBackground().ignoresSafeArea())
+        .background(
+            ZStack {
+                AmbientBackground()
+                ArtworkWash()
+            }
+            .ignoresSafeArea()
+        )
         .preferredColorScheme(Theme.scheme)
+        // Stock controls (switches, text selection) take the theme's accent.
+        .tint(Theme.cyan)
         // Rebuild on a theme change so every view reads the new palette.
         .id(themeID)
     }
@@ -71,13 +80,16 @@ struct PanelToggles: View {
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
 
     /// The EQ is shown as the response graph or as faders, never both; the
-    /// button for the one showing hides it.
+    /// button for the one showing hides it. The three sit in one capsule.
     var body: some View {
-        HStack(spacing: 6) {
-            toggle("books.vertical", isOn: $showLibrary, name: "Library")
-            toggle("waveform.path.ecg", isOn: choice(Panels.response), name: "Response graph")
-            toggle("slider.vertical.3", isOn: choice(Panels.equalizer), name: "Equalizer faders")
+        HStack(spacing: 2) {
+            toggle("books.vertical.fill", isOn: $showLibrary, name: "Library", key: "⌘L")
+            toggle("waveform.path.ecg", isOn: choice(Panels.response), name: "Response graph", key: "⌘G")
+            toggle("slider.vertical.3", isOn: choice(Panels.equalizer), name: "Equalizer faders", key: "⌘E")
         }
+        .padding(3)
+        .background(Capsule().fill(Theme.ink.opacity(0.06)))
+        .overlay(Capsule().strokeBorder(Theme.ink.opacity(0.10)))
     }
 
     private func choice(_ value: String) -> Binding<Bool> {
@@ -85,26 +97,59 @@ struct PanelToggles: View {
                 set: { eqPanel = $0 ? value : Panels.hidden })
     }
 
-    private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String) -> some View {
+    private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String, key: String) -> some View {
         Button {
-            isOn.wrappedValue.toggle()
+            withAnimation(.spring(duration: 0.3)) { isOn.wrappedValue.toggle() }
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.ink.opacity(isOn.wrappedValue ? 0.95 : 0.4))
-                .pill(active: isOn.wrappedValue)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(isOn.wrappedValue ? Theme.cyan : Theme.ink.opacity(0.42))
+                .frame(width: 34, height: 24)
+                .background(Capsule().fill(isOn.wrappedValue ? Theme.cyan.opacity(0.18) : .clear))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(isOn.wrappedValue ? "Hide the \(name.lowercased())" : "Show the \(name.lowercased())")
+        .help((isOn.wrappedValue ? "Hide the \(name.lowercased())" : "Show the \(name.lowercased())") + "  (\(key))")
+    }
+}
+
+/// Shown when every panel is switched off, so the window is not just blank.
+struct AllPanelsHidden: View {
+    @AppStorage(Panels.library) private var showLibrary = true
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.3.group")
+                .font(.system(size: 30))
+                .foregroundStyle(Theme.ink.opacity(0.28))
+            Text("Everything is hidden")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.ink.opacity(0.75))
+            Text("Bring a panel back from the View menu or the switches in the header.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.ink.opacity(0.45))
+            Button {
+                withAnimation(.spring(duration: 0.3)) { showLibrary = true }
+            } label: {
+                Text("Show Library")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.9))
+                    .pill(active: true)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - Header Bar
 
-/// Power, status, devices, presets, bypass and the visualizer all live here;
-/// there is no sidebar, so the graph and the faders get the full width. The
-/// window has no title bar of its own — this row is drawn up into it, which is
-/// why it starts clear of the traffic lights.
+/// The brand, the panel switches, the output device, the visualizer and the
+/// theme; there is no sidebar, so the panels get the full width. The window
+/// has no title bar of its own — this row is drawn up into it, which is why
+/// it starts clear of the traffic lights. It has no fill: the window's
+/// backdrop shows through.
 struct HeaderBar: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
@@ -113,13 +158,16 @@ struct HeaderBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Zuujis Media Player")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+            HStack(spacing: 9) {
+                BrandMark()
+                HStack(spacing: 6) {
+                    Text("Zuujis").font(.system(size: 14, weight: .bold))
+                    Text("Media Player").font(.system(size: 14, weight: .regular))
+                }
+                .foregroundStyle(Theme.ink.opacity(0.92))
+                .fixedSize()
                 statusLine
             }
-            .padding(.trailing, 6)
 
             Spacer(minLength: 8)
 
@@ -131,10 +179,12 @@ struct HeaderBar: View {
             } label: {
                 Label("Visualizer", systemImage: "sparkles")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
+                    .foregroundStyle(Theme.onSignal)
+                    .padding(.horizontal, 13)
                     .frame(height: 30)
-                    .background(Capsule().fill(Theme.signal).opacity(0.85))
+                    .background(Capsule().fill(Theme.signal))
+                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.28)))
+                    .shadow(color: Theme.violet.opacity(0.45), radius: 8, y: 1)
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -144,9 +194,8 @@ struct HeaderBar: View {
             StatusMenu()
         }
         .padding(.leading, 84)
-        .padding(.trailing, 14)
-        .frame(height: 54)
-        .background(Theme.ink.opacity(0.025))
+        .padding(.trailing, 16)
+        .frame(height: 52)
         .onChange(of: presets.selectedPresetID) { _, newID in
             if let presetID = newID, let preset = presets.preset(withID: presetID) {
                 engine.applyPreset(preset)
@@ -158,11 +207,32 @@ struct HeaderBar: View {
     @ViewBuilder
     private var statusLine: some View {
         if let error = engine.routeErrorMessage {
-            Text(error)
+            Label(error, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.amber)
                 .lineLimit(1)
+                .padding(.leading, 6)
         }
+    }
+}
+
+/// The app's mark in the header: the icon's play triangle on the signal gradient.
+struct BrandMark: View {
+    var size: CGFloat = 22
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+            .fill(LinearGradient(colors: Theme.signalColors, startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(
+                Image(systemName: "play.fill")
+                    .font(.system(size: size * 0.45, weight: .bold))
+                    .offset(x: size * 0.03)
+                    .foregroundStyle(Theme.onSignal)
+            )
+            .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5))
+            .frame(width: size, height: size)
+            .shadow(color: Theme.violet.opacity(0.5), radius: 6, y: 1)
     }
 }
 

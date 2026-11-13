@@ -537,8 +537,9 @@ struct PreampRow: View {
                 .font(.system(size: 9.5, weight: .semibold))
                 .tracking(1.1)
                 .foregroundStyle(Theme.ink.opacity(0.45))
-            Slider(value: $engine.masterGain, in: 0.25...AudioEngine.maxGain, step: 0.05)
-                .tint(engine.amplificationDB > 12 ? Theme.amber : Theme.mint)
+            GlowSlider(value: $engine.masterGain, range: 0.25...AudioEngine.maxGain, step: 0.05,
+                       colors: engine.amplificationDB > 12 ? [Theme.mint, Theme.amber, Theme.red]
+                                                           : [Theme.mint.opacity(0.7), Theme.mint])
             Text(String(format: "%+0.1f dB", engine.amplificationDB))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -563,8 +564,9 @@ struct PreampRow: View {
             .help("Reset the preamp to 0 dB")
         }
         .padding(.horizontal, 12)
-        .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.ink.opacity(0.04)))
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink.opacity(0.045)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
     }
 }
 
@@ -573,15 +575,9 @@ struct BandCountPicker: View {
     @EnvironmentObject private var engine: AudioEngine
 
     var body: some View {
-        Picker("Bands", selection: selection) {
-            Text("10").tag(10)
-            Text("15").tag(15)
-            Text("31").tag(31)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 132)
-        .help("Number of bands")
+        SegmentedPills(options: [(10, "10"), (15, "15"), (31, "31")], selection: selection,
+                       height: 22, horizontalPadding: 10)
+            .help("Number of bands")
     }
 
     private var selection: Binding<Int> {

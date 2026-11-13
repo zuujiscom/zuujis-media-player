@@ -633,6 +633,13 @@ final class PlayerEngine: ObservableObject {
         newEngine.attach(newEQ)
         newEngine.connect(newPlayer, to: newEQ, format: format)
         newEngine.connect(newEQ, to: newEngine.mainMixerNode, format: format)
+        #if DEBUG
+        // Screenshot runs play a real file for the meters; this keeps them
+        // silent. The meter tap sits before the mixer, so it still reads.
+        if ProcessInfo.processInfo.environment["ZMP_GALLERY_MUTE"] != nil {
+            newEngine.mainMixerNode.outputVolume = 0
+        }
+        #endif
         newPlayer.volume = volume
 
         engine = newEngine
@@ -829,13 +836,10 @@ final class PlayerEngine: ObservableObject {
     private func loadMetadata(for url: URL) {
         Task { [weak self] in
             // Tags come from the shared reader, which also handles FLAC's
-            // Vorbis comments (AVFoundation ignores them); only the cover
-            // art is asked of AVFoundation.
+            // Vorbis comments (AVFoundation ignores them). The cover has its
+            // own reader for the same reason: see `CoverArt`.
             let meta = await TrackMetadata.read(url)
-            let asset = AVURLAsset(url: url)
-            let items = (try? await asset.load(.commonMetadata)) ?? []
-            let artData = try? await AVMetadataItem.metadataItems(from: items, filteredByIdentifier: .commonIdentifierArtwork)
-                .first?.load(.dataValue)
+            let artData = await CoverArt.data(for: url)
 
             guard let self, self.track?.url == url else { return }
             if let title = meta.title, !title.isEmpty { self.track?.title = title }
@@ -863,5 +867,102 @@ private final class LatestFrame: @unchecked Sendable {
 
     func clear() {
         lock.lock(); frame = nil; lock.unlock()
+    }
+}
+
+
+/// Finds a track's cover, for the one file that is playing (never during a
+/// library scan). AVFoundation returns the art embedded in MP3, M4A and AIFF
+/// but not a FLAC's PICTURE block, so that is read here; failing both, a
+/// `cover`/`folder`/`front` image beside the file is used, as rips often have.
+enum CoverArt {
+    static func data(for url: URL) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        let items = (try? await asset.load(.commonMetadata)) ?? []
+        if let embedded = try? await AVMetadataItem
+            .metadataItems(from: items, filteredByIdentifier: .commonIdentifierArtwork)
+            .first?.load(.dataValue) {
+            return embedded
+        }
+        return await Task.detached(priority: .utility) {
+            if url.pathExtension.lowercased() == "flac", let picture = flacPicture(url) { return picture }
+            return sidecar(for: url)
+        }.value
+    }
+
+    /// The first PICTURE block of a FLAC file (front cover preferred), reading
+    /// only the metadata blocks, never the audio.
+    static func flacPicture(_ url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        func read(_ count: Int) -> Data? {
+            guard count >= 0, let data = try? handle.read(upToCount: count), data.count == count else { return nil }
+            return data
+        }
+        func be32(_ data: Data, _ offset: Int) -> Int? {
+            guard offset >= 0, offset + 4 <= data.count else { return nil }
+            let b = data.startIndex + offset
+            return Int(data[b]) << 24 | Int(data[b + 1]) << 16 | Int(data[b + 2]) << 8 | Int(data[b + 3])
+        }
+
+        guard var magic = read(4) else { return nil }
+        // Some rips glue an ID3v2 tag in front of the FLAC stream.
+        if magic.prefix(3) == Data("ID3".utf8) {
+            guard let rest = read(6) else { return nil }
+            let size = rest.suffix(4).reduce(0) { $0 << 7 | Int($1 & 0x7F) }
+            let footer = (rest[rest.startIndex + 1] & 0x10) != 0 ? 10 : 0
+            guard (try? handle.seek(toOffset: UInt64(10 + size + footer))) != nil, let next = read(4) else { return nil }
+            magic = next
+        }
+        guard magic == Data("fLaC".utf8) else { return nil }
+
+        var fallback: Data?
+        while let header = read(4) {
+            let isLast = header[header.startIndex] & 0x80 != 0
+            let type = header[header.startIndex] & 0x7F
+            let length = Int(header[header.startIndex + 1]) << 16 | Int(header[header.startIndex + 2]) << 8
+                | Int(header[header.startIndex + 3])
+            if type == 6, length < 32 * 1024 * 1024, let block = read(length) {
+                // type, MIME, description, four dimension fields, then the image.
+                if let kind = be32(block, 0), let mimeLength = be32(block, 4),
+                   let descriptionLength = be32(block, 8 + mimeLength) {
+                    let sizeAt = 12 + mimeLength + descriptionLength + 16
+                    if let imageLength = be32(block, sizeAt), sizeAt + 4 + imageLength <= block.count {
+                        let image = block.subdata(in: (block.startIndex + sizeAt + 4)..<(block.startIndex + sizeAt + 4 + imageLength))
+                        if kind == 3 { return image }
+                        if fallback == nil { fallback = image }
+                    }
+                }
+            } else if type != 6 {
+                guard let here = try? handle.offset(),
+                      (try? handle.seek(toOffset: here + UInt64(length))) != nil else { break }
+            } else {
+                break
+            }
+            if isLast { break }
+        }
+        return fallback
+    }
+
+    /// An image file in the track's folder with one of the usual cover names.
+    static func sidecar(for url: URL) -> Data? {
+        let folder = url.deletingLastPathComponent()
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
+        let wanted = ["cover", "folder", "front", "album", "albumart"]
+        let types = ["jpg", "jpeg", "png"]
+        let candidates = names.filter { name in
+            let lower = name.lowercased() as NSString
+            return types.contains(lower.pathExtension) && wanted.contains(lower.deletingPathExtension)
+        }
+        .sorted { a, b in
+            let rank = { (n: String) in wanted.firstIndex(of: (n.lowercased() as NSString).deletingPathExtension) ?? 99 }
+            return rank(a) < rank(b)
+        }
+        guard let first = candidates.first else { return nil }
+        let file = folder.appendingPathComponent(first)
+        // A cover, not a scan of the booklet: skip anything implausibly large.
+        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size > 0, size < 32 * 1024 * 1024 else { return nil }
+        return try? Data(contentsOf: file)
     }
 }

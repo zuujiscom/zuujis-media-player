@@ -6,7 +6,7 @@ import Metal
 import SwiftUI
 
 /// A development aid, compiled into Debug builds only. Launching the app with
-/// `AEQ_GALLERY=/some/folder` renders every visualizer preset offscreen from a
+/// `ZMP_GALLERY=/some/folder` renders every visualizer preset offscreen from a
 /// synthetic signal, writes contact sheets there, and quits — without ever
 /// starting the audio engine, so it is safe to run while the real app is the
 /// machine's audio path.
@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 enum DebugGallery {
     static var directory: URL? {
-        ProcessInfo.processInfo.environment["AEQ_GALLERY"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        ProcessInfo.processInfo.environment["ZMP_GALLERY"].map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
     private static let tile = (width: 480, height: 300)
@@ -199,18 +199,41 @@ enum DebugGallery {
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
+    private static func menuOutline(_ menu: NSMenu?, depth: Int = 0) -> String {
+        guard let menu else { return "" }
+        var text = ""
+        for item in menu.items {
+            let pad = String(repeating: "    ", count: depth)
+            if item.isSeparatorItem { text += pad + "----\n"; continue }
+            var keys = ""
+            if !item.keyEquivalent.isEmpty {
+                let flags = item.keyEquivalentModifierMask
+                keys = "  [" + (flags.contains(.control) ? "⌃" : "") + (flags.contains(.option) ? "⌥" : "")
+                    + (flags.contains(.shift) ? "⇧" : "") + (flags.contains(.command) ? "⌘" : "")
+                    + item.keyEquivalent.uppercased() + "]"
+            }
+            text += pad + item.title + keys + "\n"
+            // Submenus are built lazily; ask for them before reading.
+            if let submenu = item.submenu {
+                submenu.delegate?.menuNeedsUpdate?(submenu)
+                text += menuOutline(submenu, depth: depth + 1)
+            }
+        }
+        return text
+    }
+
     /// Runs the gallery and quits. Called before the engine is given its
     /// profile store, so nothing here can reach the user's saved profiles.
     ///
-    /// Screenshot extras: `AEQ_GALLERY_PLAY=<file>` really plays that file
+    /// Screenshot extras: `ZMP_GALLERY_PLAY=<file>` really plays that file
     /// through the player so the graph and meters show live audio, and
-    /// `AEQ_GALLERY_ARTIST` / `AEQ_GALLERY_PLAYLIST` pick what the library
-    /// shows. `AEQ_GALLERY_VISUALIZER=1` also opens the Visualizer window and
+    /// `ZMP_GALLERY_ARTIST` / `ZMP_GALLERY_PLAYLIST` pick what the library
+    /// shows. `ZMP_GALLERY_VISUALIZER=1` also opens the Visualizer window and
     /// writes its window number to `visualizer-id.txt` for `screencapture -l`
     /// (its Metal view cannot be cached like the main window). Pair with `ZUUJIS_DATA_DIR` so a made-up library is used.
     static func run(engine: AudioEngine, player: PlayerEngine, directory: URL, openVisualizer: @escaping () -> Void) {
         Task { @MainActor in
-            if ProcessInfo.processInfo.environment["AEQ_GALLERY_UI_ONLY"] == nil {
+            if ProcessInfo.processInfo.environment["ZMP_GALLERY_UI_ONLY"] == nil {
                 renderVisualizer(to: directory)
             }
 
@@ -220,13 +243,13 @@ enum DebugGallery {
                 engine.bands[index].gain = gains[index]
             }
             let env = ProcessInfo.processInfo.environment
-            if let file = env["AEQ_GALLERY_PLAY"] {
+            if let file = env["ZMP_GALLERY_PLAY"] {
                 player.attach(to: engine)
                 player.open([URL(fileURLWithPath: file)])
-                try? await Task.sleep(for: .seconds(Double(env["AEQ_GALLERY_SEEK"] ?? "") ?? 0) + .seconds(3))
+                try? await Task.sleep(for: .seconds(Double(env["ZMP_GALLERY_SEEK"] ?? "") ?? 0) + .seconds(3))
             }
             engine.isRunning = true
-            let fake = env["AEQ_GALLERY_PLAY"] != nil ? nil : Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            let fake = env["ZMP_GALLERY_PLAY"] != nil ? nil : Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                 Task { @MainActor in
                     engine.meters.snapshot = MeterSnapshot(
                         spectrum: syntheticFrame(at: Date().timeIntervalSinceReferenceDate).spectrum,
@@ -234,7 +257,7 @@ enum DebugGallery {
                     )
                 }
             }
-            if env["AEQ_GALLERY_VISUALIZER"] != nil {
+            if env["ZMP_GALLERY_VISUALIZER"] != nil {
                 openVisualizer()
                 try? await Task.sleep(for: .seconds(1))
                 if let window = NSApp.windows.first(where: { $0.title == "Visualizer" && $0.isVisible }) {
@@ -245,18 +268,31 @@ enum DebugGallery {
                 }
                 try? await Task.sleep(for: .seconds(2))
             }
-            if let size = env["AEQ_GALLERY_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
+            if let size = env["ZMP_GALLERY_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
                let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
                 window.setContentSize(NSSize(width: size[0], height: size[1]))
             }
+            // `ZMP_GALLERY_SCREEN=left` parks the window on the leftmost display
+            // for a real `screencapture -l` (which, unlike the cached snapshot
+            // below, shows masks, blurs and clips as they are composited).
+            if env["ZMP_GALLERY_SCREEN"] == "left",
+               let screen = NSScreen.screens.min(by: { $0.frame.minX < $1.frame.minX }),
+               let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
+                window.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 40,
+                                              y: screen.visibleFrame.maxY - window.frame.height - 40))
+                window.orderFrontRegardless()
+            }
             try? await Task.sleep(for: .seconds(1.5))
+            // The menu bar as text, so a change to the commands can be checked.
+            try? menuOutline(NSApp.mainMenu).write(
+                to: directory.appendingPathComponent("menus.txt"), atomically: true, encoding: .utf8)
             if let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
                 snapshot(window, to: directory.appendingPathComponent("main-window.png"))
                 try? "\(window.windowNumber)".write(
                     to: directory.appendingPathComponent("window-id.txt"), atomically: true, encoding: .utf8
                 )
             }
-            if ProcessInfo.processInfo.environment["AEQ_GALLERY_HOLD"] != nil { return }
+            if ProcessInfo.processInfo.environment["ZMP_GALLERY_HOLD"] != nil { return }
             fake?.invalidate()
             player.stop()
             engine.isRunning = false

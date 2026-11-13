@@ -14,6 +14,10 @@ struct LibraryView: View {
 
     enum Browse: String { case artists, genres, playlists }
 
+    /// With no EQ panel showing, the columns take the window's spare height
+    /// instead of stopping at their usual 300 points.
+    var fillsHeight = false
+
     @AppStorage("libraryBrowse") private var browseRaw = Browse.artists.rawValue
     @AppStorage("libraryWriteTagsToFiles") private var writeToFiles = true
     private var browse: Browse { Browse(rawValue: browseRaw) ?? .artists }
@@ -52,13 +56,13 @@ struct LibraryView: View {
                 HStack(spacing: 10) {
                     switch browse {
                     case .artists:
-                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 210)
+                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 226)
                         column(title: "Albums", count: albums.count) { albumList }.frame(width: 250)
                         column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .genres:
-                        column(title: "Genres", count: genres.count) { genreList }.frame(width: 160)
-                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 190)
-                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 210)
+                        column(title: "Genres", count: genres.count) { genreList }.frame(width: 172)
+                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 198)
+                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 216)
                         column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .playlists:
                         column(title: "Playlists", count: playlists.playlists.count, accessory: {
@@ -74,7 +78,7 @@ struct LibraryView: View {
                 }
                 // Fixed height: each column scrolls inside it instead of the
                 // card growing to fit a long list.
-                .frame(height: 300)
+                .frame(minHeight: 300, idealHeight: 300, maxHeight: fillsHeight ? .infinity : 300)
             }
         }
         .card()
@@ -85,8 +89,8 @@ struct LibraryView: View {
             // DebugGallery screenshots choose what the library shows.
             let env = ProcessInfo.processInfo.environment
             try? await Task.sleep(for: .seconds(1))
-            if let name = env["AEQ_GALLERY_ARTIST"] { artist = name }
-            if let name = env["AEQ_GALLERY_PLAYLIST"] { playlistID = playlists.playlists.first { $0.name == name }?.id }
+            if let name = env["ZMP_GALLERY_ARTIST"] { artist = name }
+            if let name = env["ZMP_GALLERY_PLAYLIST"] { playlistID = playlists.playlists.first { $0.name == name }?.id }
         }
         #endif
         .onChange(of: browseRaw) { _, _ in album = nil; clearSelection(); refresh() }
@@ -125,22 +129,12 @@ struct LibraryView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "books.vertical")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.violet)
-            Text("LIBRARY")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(Theme.ink.opacity(0.85))
+            SectionTitle(text: "Library", systemImage: "books.vertical.fill")
 
-            Picker("Browse by", selection: $browseRaw) {
-                Text("Artists").tag(Browse.artists.rawValue)
-                Text("Genres").tag(Browse.genres.rawValue)
-                Text("Playlists").tag(Browse.playlists.rawValue)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 240)
+            SegmentedPills(options: [(Browse.artists.rawValue, "Artists"),
+                                     (Browse.genres.rawValue, "Genres"),
+                                     (Browse.playlists.rawValue, "Playlists")],
+                           selection: $browseRaw)
 
             Text(notice ?? status)
                 .font(.system(size: 11, weight: .medium))
@@ -157,7 +151,15 @@ struct LibraryView: View {
                     TextField("Search", text: $search)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
-                        .frame(width: 130)
+                        .frame(width: 140)
+                    if !search.isEmpty {
+                        Button { search = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.ink.opacity(0.4))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .pill()
             }
@@ -209,9 +211,10 @@ struct LibraryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "music.note.house")
-                .font(.system(size: 30))
-                .foregroundStyle(Theme.ink.opacity(0.3))
+            Image(systemName: "music.note.house.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(Theme.signal)
+                .shadow(color: Theme.violet.opacity(0.5), radius: 12)
             Text("Add a folder of music to build your library")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.ink.opacity(0.7))
@@ -222,9 +225,12 @@ struct LibraryView: View {
                 addFolder()
             } label: {
                 Label("Add Music Folder…", systemImage: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.ink.opacity(0.9))
-                    .pill(active: true)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.onSignal)
+                    .padding(.horizontal, 14)
+                    .frame(height: 30)
+                    .background(Capsule().fill(Theme.signal))
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -238,23 +244,37 @@ struct LibraryView: View {
         @ViewBuilder accessory: () -> Accessory,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("\(title.uppercased())  \(count)" + (selected > 0 ? " · \(selected) SELECTED" : ""))
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(Theme.ink.opacity(0.4))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.0)
+                    .foregroundStyle(Theme.ink.opacity(0.55))
+                Text("\(count)")
+                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(Theme.ink.opacity(0.5))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Theme.ink.opacity(0.08)))
+                if selected > 0 {
+                    Text("\(selected) selected")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(Theme.cyan)
+                }
                 Spacer(minLength: 0)
                 accessory()
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             ScrollView {
                 LazyVStack(spacing: 1) { content() }
-                    .padding(4)
+                    .padding(5)
             }
-            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.well))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline))
         }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.well.opacity(Theme.palette.isLight ? 1 : 0.72)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func column<Content: View>(title: String, count: Int, selected: Int = 0, @ViewBuilder content: () -> Content) -> some View {
@@ -265,9 +285,9 @@ struct LibraryView: View {
 
     private var genreList: some View {
         Group {
-            row("All Genres", detail: "\(library.tracks.count)", selected: genre == nil) { genre = nil }
+            row("All Genres", detail: "\(library.tracks.count)", icon: .symbol("guitars.fill"), selected: genre == nil) { genre = nil }
             ForEach(genres) { entry in
-                row(entry.name, detail: "\(entry.trackCount)", selected: genre == entry.name) { genre = entry.name }
+                row(entry.name, detail: "\(entry.trackCount)", icon: .genre, selected: genre == entry.name) { genre = entry.name }
                     .contextMenu {
                         let tracks = LibraryModel.songs(library.tracks, inGenre: entry.name)
                         Button("Play All \(entry.name)") { play(tracks) }
@@ -292,9 +312,9 @@ struct LibraryView: View {
 
     private var artistList: some View {
         Group {
-            row("All Artists", detail: "\(scoped.count)", selected: artist == nil) { artist = nil }
+            row("All Artists", detail: "\(scoped.count)", icon: .symbol("person.2.fill"), selected: artist == nil) { artist = nil }
             ForEach(artists) { entry in
-                row(entry.name, detail: "\(entry.trackCount)", selected: artist == entry.name) { artist = entry.name }
+                row(entry.name, detail: "\(entry.trackCount)", icon: .artist, selected: artist == entry.name) { artist = entry.name }
                     .contextMenu {
                         let tracks = LibraryModel.songs(scoped, artist: entry.name, album: nil)
                         Button("Play All by \(entry.name)") { play(tracks) }
@@ -310,11 +330,12 @@ struct LibraryView: View {
 
     private var albumList: some View {
         Group {
-            row("All Albums", detail: "", selected: album == nil) { album = nil }
+            row("All Albums", detail: "", icon: .symbol("square.stack"), selected: album == nil) { album = nil }
             ForEach(albums) { entry in
                 row(entry.name,
                     detail: entry.year.map(String.init) ?? "",
                     subtitle: artist == nil ? entry.artist : nil,
+                    icon: .album,
                     selected: album == entry) { album = entry }
                     .contextMenu {
                         let tracks = LibraryModel.songs(scoped, artist: entry.artist, album: entry)
@@ -367,10 +388,9 @@ struct LibraryView: View {
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                     .foregroundStyle(Theme.ink.opacity(0.4))
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 5)
-                .fill(isSelected ? Theme.cyan.opacity(0.22) : (isCurrent ? Theme.ink.opacity(0.06) : .clear)))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .modifier(RowHighlight(isSelected: isSelected, isCurrent: isCurrent))
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.play(urls: songs.map(\.url), startingAt: index) }
             .onTapGesture { click(song.id, in: songs.map(\.id)) }
@@ -412,8 +432,9 @@ struct LibraryView: View {
                     .padding(8)
             }
             ForEach(playlists.playlists) { list in
-                row(list.id == PlaylistStore.favoritesID ? "♥ " + list.name : list.name,
-                    detail: "\(list.paths.count)", selected: playlistID == list.id) { playlistID = list.id }
+                row(list.name, detail: "\(list.paths.count)",
+                    icon: list.id == PlaylistStore.favoritesID ? .favorites : .playlist,
+                    selected: playlistID == list.id) { playlistID = list.id }
                     .dropDestination(for: String.self) { items, _ in
                         let paths = items.compactMap(Self.path(fromDrag:))
                         guard !paths.isEmpty else { return false }
@@ -500,10 +521,9 @@ struct LibraryView: View {
                 .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(Theme.ink.opacity(0.4))
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(RoundedRectangle(cornerRadius: 5)
-            .fill(isSelected ? Theme.cyan.opacity(0.22) : (isCurrent ? Theme.ink.opacity(0.06) : .clear)))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .modifier(RowHighlight(isSelected: isSelected, isCurrent: isCurrent))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             guard let start = playable.position[path] else { return }
@@ -674,31 +694,60 @@ struct LibraryView: View {
         }
     }
 
-    private func row(_ title: String, detail: String, subtitle: String? = nil, selected: Bool,
-                     action: @escaping () -> Void) -> some View {
+    /// The little picture at the start of a browse row.
+    private enum RowIcon {
+        case none, artist, album, genre, playlist, favorites
+        case symbol(String)
+    }
+
+    private func row(_ title: String, detail: String, subtitle: String? = nil, icon: RowIcon = .none,
+                     selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                switch icon {
+                case .none: EmptyView()
+                case .artist: Monogram(name: title, shape: .circle)
+                case .album: Monogram(name: title, symbol: "music.note", shape: .square, size: 26)
+                case .genre: Monogram(name: title, symbol: "tag.fill", shape: .square)
+                case .playlist: Monogram(name: title, symbol: "music.note.list", shape: .square)
+                case .favorites:
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.pink))
+                case .symbol(let name): Monogram(name: title, symbol: name, shape: .circle, neutral: true)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.black.opacity(0.85) : Theme.ink.opacity(0.85))
+                        .foregroundStyle(Theme.ink.opacity(selected ? 1 : 0.86))
                         .lineLimit(1)
                     if let subtitle {
                         Text(subtitle)
                             .font(.system(size: 10))
-                            .foregroundStyle(selected ? Color.black.opacity(0.6) : Theme.ink.opacity(0.4))
+                            .foregroundStyle(Theme.ink.opacity(selected ? 0.6 : 0.42))
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 4)
                 Text(detail)
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                    .foregroundStyle(selected ? Color.black.opacity(0.6) : Theme.ink.opacity(0.35))
+                    .foregroundStyle(Theme.ink.opacity(selected ? 0.7 : 0.38))
             }
-            .padding(.horizontal, 8)
+            .padding(.leading, 7)
+            .padding(.trailing, 8)
             .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 5)
-                .fill(selected ? AnyShapeStyle(Theme.signal) : AnyShapeStyle(Color.clear)))
+            .frame(minHeight: 30)
+            .modifier(RowHighlight(isSelected: selected))
+            // The selected row carries the signal colours as a bar on its edge.
+            .overlay(alignment: .leading) {
+                if selected {
+                    Capsule().fill(LinearGradient(colors: Theme.signalColors, startPoint: .top, endPoint: .bottom))
+                        .frame(width: 3)
+                        .padding(.vertical, 5)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -742,7 +791,19 @@ struct LibraryView: View {
         player.enqueue(tracks.map(\.url))
     }
 
-    private func addFolder() {
+    private func addFolder() { LibraryActions.addFolder(to: library) }
+
+    private static func time(_ seconds: Double?) -> String {
+        guard let seconds, seconds > 0 else { return "" }
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Shared by the library card and the File menu.
+@MainActor
+enum LibraryActions {
+    static func addFolder(to library: LibraryStore) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -753,12 +814,6 @@ struct LibraryView: View {
             let urls = panel.urls
             Task { @MainActor in library.addFolders(urls) }
         }
-    }
-
-    private static func time(_ seconds: Double?) -> String {
-        guard let seconds, seconds > 0 else { return "" }
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 

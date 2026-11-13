@@ -1,8 +1,9 @@
 # Zuujis Media Player
 
-A system-wide equalizer for macOS. It shapes and boosts whatever your Mac is
-playing (music, videos, games, calls) on whichever output you are using, with
-no virtual audio driver to install.
+A lossless music player for macOS with a system-wide equalizer and a
+visualizer. The equalizer shapes and boosts whatever your Mac is playing
+(music, videos, games, calls) on whichever output you are using, with no
+virtual audio driver to install.
 
 ![Zuujis Media Player playing a song: the library browsed by artist above the EQ response curve drawn over the live spectrum.](docs/screenshot.webp)
 
@@ -95,7 +96,7 @@ developer account is needed to build it for your own Mac.
 ### Use it
 
 1. Press the **power button** in the header of the Response or Equalizer box, or choose
-   **Engine → Start Engine**. The first time, macOS asks for permission to
+   **Equalizer → Turn Equalizer On** (⌘↩). The first time, macOS asks for permission to
    capture audio. Allow it, since the app cannot equalize audio it cannot hear.
 2. Play something and move the sliders, or pick a preset with the **Presets** button in the same box header.
 3. Choose 10, 15 or 31 bands to trade simplicity for precision. Presets adapt
@@ -108,29 +109,33 @@ back that device's saved curve.
 
 ### Presets
 
-- **File → Save Current as Preset…** saves your curve.
-- **File → Import Preset…** and **Export Selected Preset…** share presets as
+- **Equalizer → Save Current as Preset…** (⌘S) saves your curve.
+- **Equalizer → Import Preset…** and **Export Selected Preset…** share presets as
   JSON files.
 - The **Presets** button (beside the power button and Bypass in the Response and
   Equalizer box headers) lists every preset and saves, imports,
-  renames, duplicates, exports and deletes your own. **Reset EQ to Flat** (or
+  renames, duplicates, exports and deletes your own; it shows the name of the
+  preset in use. **Equalizer → Presets** has the same list, with ⌘1 to ⌘9 for
+  the first nine. **Reset to Flat** (or
   the **Flat** button) clears the curve.
 - Presets live in `~/Library/Application Support/Zuujis Media Player/`. Use
-  **File → Reveal Presets File in Finder** to get there.
+  **Equalizer → Reveal Presets File in Finder** to get there.
 
 ### Player
 
-The bar under the header plays audio files through the same EQ. It follows the
+The Now Playing area under the header plays audio files through the same EQ.
+It shows the song's cover (embedded art, including a FLAC's, or a `cover.jpg`
+or `folder.jpg` beside the file), and the window takes on the cover's colours. It follows the
 same controls as everything else: the faders, presets, master gain and Bypass
 shape it, and the **power button switches the EQ on and off**, so with the
 engine off the player plays flat. It uses its own audio path, separate from the
 system route, so it never processes your other audio twice.
 
-- **Player → Make Zuujis Media Player the Default Player…** makes Finder open FLAC, MP3, M4A,
+- **Zuujis Media Player → Make Default Audio Player…** makes Finder open FLAC, MP3, M4A,
   WAV, AIFF and AAC files in Zuujis Media Player (macOS may ask you to confirm). A file opened
   from Finder replaces the queue and plays.
-- **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the queue and
-  plays; **Add to Queue…** (⌥⌘O) appends. **Show Queue** is ⇧⌘L.
+- **File → Open Files or Folder…** (⌘O) replaces the queue and plays;
+  **Add to Queue…** (⇧⌘O) appends. **View → Show Queue** is ⇧⌘L.
 - Keys: **Space** play/pause (main window), **⌘→ / ⌘←** next and previous,
   **⌥⌘→ / ⌥⌘←** forward and back 10 seconds, **⌘↑ / ⌘↓** player volume,
   **⌘.** stop.
@@ -170,8 +175,9 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   only in case or spaces count as one genre. Right-click a genre to
   rename it for all its songs. The first launch after this was added re-reads
   every file's tags once to fill genres in.
-- The buttons in the header show or hide the Library and choose the EQ view.
-- The palette button in the header picks a colour theme: Midnight (default), Light, Graphite, Black, Ocean, Forest, Ember or Orchid. The choice is remembered. The Visualizer window stays dark.
+- The buttons in the header show or hide the Library and choose the EQ view;
+  so does the **View** menu (⌘L library, ⌘G response graph, ⌘E faders).
+- The palette button in the header picks a colour theme: Midnight (default), Light, Graphite, Black, Ocean, Forest, Ember or Orchid. **View → Theme** has the same list. The choice is remembered. The Visualizer window stays dark.
   The **Response graph** and the **Equalizer faders** are one or the other:
   clicking the one that is showing hides it, clicking the other switches. The
   graph has the preamp and the 10/15/31 band choice too, so it does everything
@@ -229,7 +235,7 @@ Move the pointer over the window for its controls, or use the keyboard:
 The timer button sets how long each visualization plays, from 10 seconds to
 5 minutes.
 
-**MilkDrop presets:** choose **File → Import MilkDrop Presets…** and select
+**MilkDrop presets:** choose **Visualizer → Import MilkDrop Presets…** and select
 `.milk` files or whole folders. Imported presets appear in the Visualizer menu.
 They reproduce each preset's motion; MilkDrop's custom shapes, waves and shader
 code are not supported. No presets are bundled with the app, because the
@@ -269,7 +275,7 @@ Quit the app, copy the new `Zuujis Media Player.app` over the old one in
 - **Audio stays silent after the app quits unexpectedly.** Reopen the app and
   press Start and then Stop, or switch the output device in System Settings →
   Sound and back.
-- **Reporting a problem.** Choose **Engine → Copy Diagnostics** and paste the
+- **Reporting a problem.** Choose **Equalizer → Copy Diagnostics** and paste the
   result into a [GitHub issue](https://github.com/zuujiscom/zuujis-media-player/issues).
 
 ## License
