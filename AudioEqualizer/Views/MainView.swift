@@ -6,6 +6,9 @@ struct MainView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var presets: PresetManager
     @EnvironmentObject private var player: PlayerEngine
+    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.response) private var showResponse = true
+    @AppStorage(Panels.equalizer) private var showEqualizer = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,9 +22,12 @@ struct MainView: View {
             GeometryReader { geo in
                 ScrollView {
                     VStack(spacing: 14) {
-                        SpectrumView()
-                        BandControlsView()
-                            .frame(maxWidth: .infinity)
+                        if showLibrary { LibraryView() }
+                        if showResponse { SpectrumView() }
+                        if showEqualizer {
+                            BandControlsView()
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                     .padding(16)
                     .frame(minHeight: geo.size.height)
@@ -41,6 +47,43 @@ struct MainView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(AmbientBackground().ignoresSafeArea())
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Panels
+
+/// Which of the main window's cards are showing. Each is one switch in the
+/// header; hiding one gives its space to the others.
+enum Panels {
+    static let library = "showLibrary"
+    static let response = "showResponse"
+    static let equalizer = "showEqualizer"
+}
+
+struct PanelToggles: View {
+    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.response) private var showResponse = true
+    @AppStorage(Panels.equalizer) private var showEqualizer = true
+
+    var body: some View {
+        HStack(spacing: 6) {
+            toggle("books.vertical", isOn: $showLibrary, name: "Library")
+            toggle("waveform.path.ecg", isOn: $showResponse, name: "Response graph")
+            toggle("slider.vertical.3", isOn: $showEqualizer, name: "Equalizer faders")
+        }
+    }
+
+    private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(isOn.wrappedValue ? 0.95 : 0.4))
+                .pill(active: isOn.wrappedValue)
+        }
+        .buttonStyle(.plain)
+        .help(isOn.wrappedValue ? "Hide the \(name.lowercased())" : "Show the \(name.lowercased())")
     }
 }
 
@@ -70,6 +113,7 @@ struct HeaderBar: View {
 
             Spacer(minLength: 8)
 
+            PanelToggles()
             DeviceMenu()
             PresetMenu()
 

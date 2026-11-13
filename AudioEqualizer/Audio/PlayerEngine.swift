@@ -284,6 +284,18 @@ final class PlayerEngine: ObservableObject {
         play(first.id)
     }
 
+    /// Replaces the playlist with these files, in this order, and plays the one
+    /// at `index`. Used by the library: double-click a song and the songs listed
+    /// around it become the playlist.
+    func play(urls: [URL], startingAt index: Int) {
+        let added = queue.add(urls: urls, replacing: true)
+        guard added.indices.contains(index) else {
+            if let first = added.first { play(first.id) }
+            return
+        }
+        play(added[index].id)
+    }
+
     /// Adds to the end of the queue without interrupting what is playing.
     func enqueue(_ urls: [URL]) {
         let hadCurrent = queue.currentID != nil

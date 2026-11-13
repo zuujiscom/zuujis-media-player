@@ -57,9 +57,7 @@ final class PlaybackQueue: ObservableObject {
     private var metadataTask: Task<Void, Never>?
 
     /// Everything `AVAudioFile` decodes natively.
-    static let audioExtensions: Set<String> = [
-        "flac", "m4a", "alac", "wav", "wave", "aif", "aiff", "aifc", "caf", "mp3", "aac"
-    ]
+    static let audioExtensions = LibraryModel.audioExtensions
 
     let fileURL: URL
 
@@ -249,8 +247,8 @@ final class PlaybackQueue: ObservableObject {
         metadataTask = Task { [weak self] in
             await previous?.value
             var iterator = targets.makeIterator()
-            await withTaskGroup(of: (QueueItem.ID, Metadata).self) { group in
-                func next() { if let (id, url) = iterator.next() { group.addTask { (id, await Metadata.read(url)) } } }
+            await withTaskGroup(of: (QueueItem.ID, TrackMetadata).self) { group in
+                func next() { if let (id, url) = iterator.next() { group.addTask { (id, await TrackMetadata.read(url)) } } }
                 for _ in 0..<4 { next() }
                 for await (id, meta) in group {
                     self?.apply(meta, to: id)
@@ -260,7 +258,7 @@ final class PlaybackQueue: ObservableObject {
         }
     }
 
-    private func apply(_ meta: Metadata, to id: QueueItem.ID) {
+    private func apply(_ meta: TrackMetadata, to id: QueueItem.ID) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         var item = items[i]
         if let title = meta.title, !title.isEmpty { item.title = title }
@@ -268,31 +266,6 @@ final class PlaybackQueue: ObservableObject {
         item.album = meta.album
         item.duration = meta.duration
         if item != items[i] { items[i] = item }
-    }
-
-    private struct Metadata: Sendable {
-        var title: String?
-        var artist: String?
-        var album: String?
-        var duration: Double?
-
-        static func read(_ url: URL) async -> Metadata {
-            let asset = AVURLAsset(url: url)
-            var meta = Metadata()
-            if let items = try? await asset.load(.commonMetadata) {
-                func text(_ id: AVMetadataIdentifier) async -> String? {
-                    guard let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: id).first else { return nil }
-                    return try? await item.load(.stringValue)
-                }
-                meta.title = await text(.commonIdentifierTitle)
-                meta.artist = await text(.commonIdentifierArtist)
-                meta.album = await text(.commonIdentifierAlbumName)
-            }
-            if let duration = try? await asset.load(.duration), duration.isNumeric, duration.seconds > 0 {
-                meta.duration = duration.seconds
-            }
-            return meta
-        }
     }
 
     // MARK: - Persistence
@@ -316,8 +289,9 @@ final class PlaybackQueue: ObservableObject {
         order = orderedIDs
         if saved.shuffle { order = []; rebuildOrder() }
         if let id = saved.currentID, saved.items.contains(where: { $0.id == id }) { currentID = id }
-        // Items saved before their tags finished loading get another go.
-        loadMetadata(for: saved.items.filter { $0.duration == nil }.map(\.id))
+        // Items saved before their tags finished loading (or before FLAC tags were
+        // readable) get another go.
+        loadMetadata(for: saved.items.filter { $0.duration == nil || ($0.artist == nil && $0.album == nil) }.map(\.id))
     }
 
     /// Debounced: a folder import mutates the list hundreds of times as tags
@@ -335,5 +309,60 @@ final class PlaybackQueue: ObservableObject {
         let saved = Saved(items: items, currentID: currentID, shuffle: shuffle, repeatMode: repeatMode)
         guard let data = try? JSONEncoder().encode(saved) else { return }
         try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
+/// Tags and duration for one file. FLAC's Vorbis comments are read directly
+/// (AVFoundation plays FLAC but ignores them); everything else goes through
+/// AVFoundation's metadata.
+struct TrackMetadata: Sendable {
+    var title: String?
+    var artist: String?
+    var album: String?
+    var genre: String?
+    var trackNumber: Int?
+    var discNumber: Int?
+    var year: Int?
+    var duration: Double?
+
+    static func read(_ url: URL) async -> TrackMetadata {
+        var meta = TrackMetadata()
+        let asset = AVURLAsset(url: url)
+
+        if url.pathExtension.lowercased() == "flac", let tags = FLACTags.read(url) {
+            meta.title = tags["TITLE"]
+            // Album artist first: it keeps a compilation's tracks on one album.
+            meta.artist = tags["ALBUMARTIST"] ?? tags["ALBUM ARTIST"] ?? tags["ALBUM_ARTIST"] ?? tags["ARTIST"]
+            meta.album = tags["ALBUM"]
+            meta.genre = tags["GENRE"]
+            meta.trackNumber = LibraryModel.leadingNumber(tags["TRACKNUMBER"] ?? tags["TRACK"])
+            meta.discNumber = LibraryModel.leadingNumber(tags["DISCNUMBER"] ?? tags["DISC"])
+            meta.year = LibraryModel.year(from: tags["DATE"] ?? tags["YEAR"])
+        } else {
+            if let items = try? await asset.load(.commonMetadata) {
+                func text(_ id: AVMetadataIdentifier) async -> String? {
+                    guard let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: id).first else { return nil }
+                    return try? await item.load(.stringValue)
+                }
+                meta.title = await text(.commonIdentifierTitle)
+                meta.artist = await text(.commonIdentifierArtist)
+                meta.album = await text(.commonIdentifierAlbumName)
+                meta.genre = await text(.commonIdentifierType)
+                meta.year = LibraryModel.year(from: await text(.commonIdentifierCreationDate))
+            }
+            if let all = try? await asset.load(.metadata) {
+                if let item = AVMetadataItem.metadataItems(from: all, filteredByIdentifier: .id3MetadataTrackNumber).first {
+                    meta.trackNumber = LibraryModel.leadingNumber(try? await item.load(.stringValue))
+                }
+                if let item = AVMetadataItem.metadataItems(from: all, filteredByIdentifier: .id3MetadataPartOfASet).first {
+                    meta.discNumber = LibraryModel.leadingNumber(try? await item.load(.stringValue))
+                }
+            }
+        }
+
+        if let duration = try? await asset.load(.duration), duration.isNumeric, duration.seconds > 0 {
+            meta.duration = duration.seconds
+        }
+        return meta
     }
 }

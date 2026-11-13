@@ -47,12 +47,14 @@ struct AudioEqualizerApp: App {
     @StateObject private var deviceProfiles = DeviceProfileStore()
     @StateObject private var milkdropLibrary = MilkdropLibrary()
     @StateObject private var player = PlayerEngine()
+    @StateObject private var library = LibraryStore()
 
     var body: some Scene {
         WindowGroup {
             MainView()
                 .environmentObject(player)
                 .environmentObject(player.queue)
+                .environmentObject(library)
                 .environmentObject(audioEngine)
                 .environmentObject(audioEngine.meters)
                 .environmentObject(presetManager)
