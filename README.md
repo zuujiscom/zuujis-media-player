@@ -148,6 +148,7 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   and **Add to Playlist**. The search box matches title, artist, album and
   genre.
 - The buttons in the header show or hide the Library and choose the EQ view.
+- The palette button in the header picks a colour theme: Midnight (default), Light, Graphite, Black, Ocean, Forest, Ember or Orchid. The choice is remembered. The Visualizer window stays dark.
   The **Response graph** and the **Equalizer faders** are one or the other:
   clicking the one that is showing hides it, clicking the other switches. The
   graph has the preamp and the 10/15/31 band choice too, so it does everything
