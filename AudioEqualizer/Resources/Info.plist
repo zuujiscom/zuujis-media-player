@@ -136,9 +136,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>AE2</string>
+	<string>Zuujis Media Player</string>
 	<key>CFBundleDisplayName</key>
-	<string>AE2</string>
+	<string>Zuujis Media Player</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -156,7 +156,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>None required.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>AE2 captures audio to apply equalization and amplification.</string>
+	<string>Zuujis Media Player captures audio to apply equalization and amplification.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>

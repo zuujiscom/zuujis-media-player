@@ -180,7 +180,7 @@ private enum FLACWriter {
     /// A Vorbis comment block holding `entries` ("NAME=value").
     static func commentBlock(entries: [String]) -> Data {
         func le32(_ n: Int) -> Data { Data([UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), UInt8(n >> 16 & 0xFF), UInt8(n >> 24 & 0xFF)]) }
-        let vendor = Data("AE2".utf8)
+        let vendor = Data("Zuujis Media Player".utf8)
         var out = le32(vendor.count) + vendor + le32(entries.count)
         for entry in entries { let d = Data(entry.utf8); out += le32(d.count) + d }
         return out
@@ -209,7 +209,7 @@ private enum FLACWriter {
     /// The comment block with the edited fields replaced and everything else
     /// (vendor, unrelated fields, repeated fields) kept as it was.
     static func updatedComment(_ old: Data?, _ edit: TagEdit) -> Data {
-        var vendor = Data("AE2".utf8)
+        var vendor = Data("Zuujis Media Player".utf8)
         var entries: [String] = []
         if let old {
             let bytes = [UInt8](old)

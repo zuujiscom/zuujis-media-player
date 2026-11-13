@@ -1,8 +1,8 @@
-# AE2 — Agent Guide
+# Zuujis Media Player — Agent Guide
 
 ## Project at a glance
 
-The app is called **AE2** (the product, `AE2.app`, and every user-visible string). The Xcode target, scheme, source folder and bundle ID (`com.zuujis.AudioEqualizer`) keep the old name on purpose: changing the bundle ID would orphan the user's audio-capture permission, and Application Support still lives in `AudioEqualizer/`. `AudioEqualizer` is a native SwiftUI macOS app that applies a system-wide graphic EQ and master gain to the Mac's current default output. It targets macOS 26.0 and relies on macOS process-tap APIs, AVFoundation, CoreAudio, and Accelerate/vDSP. There are no package dependencies. Unit tests for the pure logic live in a separate Swift package, `Tests/` (see Validation).
+The app is called **Zuujis Media Player** (the product, `Zuujis Media Player.app`, and every user-visible string). The Xcode target, scheme, source folder and bundle ID (`com.zuujis.AudioEqualizer`) keep the old name on purpose: changing the bundle ID would orphan the user's audio-capture permission, and Application Support still lives in `AudioEqualizer/`. `AudioEqualizer` is a native SwiftUI macOS app that applies a system-wide graphic EQ and master gain to the Mac's current default output. It targets macOS 26.0 and relies on macOS process-tap APIs, AVFoundation, CoreAudio, and Accelerate/vDSP. There are no package dependencies. Unit tests for the pure logic live in a separate Swift package, `Tests/` (see Validation).
 
 Open `AudioEqualizer.xcodeproj` in Xcode and build the `AudioEqualizer` scheme. A command-line build can use:
 
@@ -92,7 +92,7 @@ The output-device listener updates `selectedOutputDeviceID`; while running, the 
 
 ## Validation checklist
 
-- Run `swift test` in `Tests/` after touching the EQ maths, `PlaybackQueue`, `OutputRate`, `LibraryModel`, `LibraryStore` or `TagWriter`. It is a package that symlinks those files from `AudioEqualizer/` (nothing is duplicated and the Xcode project is untouched), so a file under test must import only Foundation, AVFoundation or CoreAudio. A new file under test needs a symlink in `Tests/Sources/AE2Core/`. `TagWriterTests` build real FLAC/MP3 files with ffmpeg and check them with ffprobe/metaflac/flac (skipped if absent); `LibraryStoreTests.testRealFolder` is opt-in via `AE2_REAL_LIBRARY`. Queue tests persist to a temp folder, never Application Support. The audio path and UI are not covered: test those by hand as below.
+- Run `swift test` in `Tests/` after touching the EQ maths, `PlaybackQueue`, `OutputRate`, `LibraryModel`, `LibraryStore` or `TagWriter`. It is a package that symlinks those files from `AudioEqualizer/` (nothing is duplicated and the Xcode project is untouched), so a file under test must import only Foundation, AVFoundation or CoreAudio. A new file under test needs a symlink in `Tests/Sources/AE2Core/`. `TagWriterTests` build real FLAC/MP3 files with ffmpeg and check them with ffprobe/metaflac/flac (skipped if absent); `LibraryStoreTests.testRealFolder` is opt-in via `Zuujis Media Player_REAL_LIBRARY`. Queue tests persist to a temp folder, never Application Support. The audio path and UI are not covered: test those by hand as below.
 - Build the `AudioEqualizer` scheme after Swift or project-setting changes.
 - Manually test audio changes on a machine that supports process taps: Start, play system audio, alter a band and master gain, Stop, then confirm ordinary system audio still plays.
 - Change the macOS default output while running and verify the app follows it. Test a route-creation failure or Stop after Start to ensure no tap/aggregate is left behind.

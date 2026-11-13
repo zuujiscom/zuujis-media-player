@@ -151,10 +151,10 @@ struct AudioEqualizerApp: App {
             // preset name and rename dialogs.
             CommandGroup(replacing: .undoRedo) { }
             CommandGroup(replacing: .appInfo) {
-                Button("About AE2") {
+                Button("About Zuujis Media Player") {
                     NSApplication.shared.orderFrontStandardAboutPanel(
                         options: [
-                            .applicationName: "AE2",
+                            .applicationName: "Zuujis Media Player",
                             .applicationVersion: "1.0.0",
                             .version: "1",
                             .credits: NSAttributedString(string: "Native macOS Equalizer for Apple Silicon")
@@ -211,7 +211,7 @@ struct AudioEqualizerApp: App {
                 .keyboardShortcut("d", modifiers: [.command])
                 .disabled(player.track == nil)
 
-                Button("Make AE2 the Default Player…") {
+                Button("Make Zuujis Media Player the Default Player…") {
                     DefaultPlayer.makeDefault()
                 }
 
@@ -415,7 +415,7 @@ private func shortcut(for index: Int) -> KeyEquivalent {
 }
 
 
-/// Makes AE2 the app Finder opens sound files with. Runs only when the user
+/// Makes Zuujis Media Player the app Finder opens sound files with. Runs only when the user
 /// chooses the menu item; macOS may ask them to confirm.
 enum DefaultPlayer {
     static let identifiers = [
@@ -435,8 +435,8 @@ enum DefaultPlayer {
             }
             let alert = NSAlert()
             if failed.isEmpty {
-                alert.messageText = "AE2 is now the default player"
-                alert.informativeText = "Double-clicking a FLAC, MP3, M4A, WAV, AIFF or AAC file opens it in AE2."
+                alert.messageText = "Zuujis Media Player is now the default player"
+                alert.informativeText = "Double-clicking a FLAC, MP3, M4A, WAV, AIFF or AAC file opens it in Zuujis Media Player."
             } else {
                 alert.messageText = "Could not change some file types"
                 alert.informativeText = "Not changed: " + failed.joined(separator: ", ")

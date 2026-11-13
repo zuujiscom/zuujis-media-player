@@ -72,7 +72,7 @@
 		200000000000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		200000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000012 /* AudioEqualizer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioEqualizer.entitlements; sourceTree = "<group>"; };
-		200000000000000000000013 /* AE2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AE2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000013 /* Zuujis Media Player.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Zuujis Media Player.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000070 /* PlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEngine.swift; sourceTree = "<group>"; };
 		2000000000000000000000A1 /* OutputRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRate.swift; sourceTree = "<group>"; };
 		200000000000000000000071 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
@@ -196,7 +196,7 @@
 		400000000000000000000007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000013 /* AE2.app */,
+				200000000000000000000013 /* Zuujis Media Player.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -218,7 +218,7 @@
 			);
 			name = AudioEqualizer;
 			productName = AudioEqualizer;
-			productReference = 200000000000000000000013 /* AE2.app */;
+			productReference = 200000000000000000000013 /* Zuujis Media Player.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -452,7 +452,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuujis.AudioEqualizer;
-				PRODUCT_NAME = AE2;
+				PRODUCT_NAME = "Zuujis Media Player";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Debug;
@@ -478,7 +478,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuujis.AudioEqualizer;
-				PRODUCT_NAME = AE2;
+				PRODUCT_NAME = "Zuujis Media Player";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;

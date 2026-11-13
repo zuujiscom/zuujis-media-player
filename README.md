@@ -1,10 +1,10 @@
-# AE2
+# Zuujis Media Player
 
 A system-wide equalizer for macOS. It shapes and boosts whatever your Mac is
 playing (music, videos, games, calls) on whichever output you are using, with
 no virtual audio driver to install.
 
-![AE2's main window with the Rock preset applied: the EQ curve drawn over the live spectrum, above a 31-band equalizer whose faders are lit by the signal at each band, next to the visualizer window showing the Skyline mode.](docs/screenshot.webp)
+![Zuujis Media Player's main window with the Rock preset applied: the EQ curve drawn over the live spectrum, above a 31-band equalizer whose faders are lit by the signal at each band, next to the visualizer window showing the Skyline mode.](docs/screenshot.webp)
 
 - **10, 15 or 31 band graphic EQ**, from 20 Hz to 20 kHz, ±24 dB per band.
 - **Master gain up to +24 dB**, for quiet laptops, speakers and headphones.
@@ -25,13 +25,13 @@ no virtual audio driver to install.
 
 ## How it works
 
-AE2 uses the Core Audio *process tap* API added in macOS 26. When
+Zuujis Media Player uses the Core Audio *process tap* API added in macOS 26. When
 you press Start, it:
 
 1. Creates a **process tap** that captures everything the Mac is playing,
    except the app's own audio. While the tap is active, macOS mutes the
    original sound, so you hear only the equalized version.
-2. Creates an **aggregate audio device** named "AE2 Output" that
+2. Creates an **aggregate audio device** named "Zuujis Media Player Output" that
    combines the tap with your real speakers or headphones.
 3. Runs the captured audio through the EQ and plays the result on your output
    device, all in one clock-synced audio callback.
@@ -72,11 +72,11 @@ background service. The app only runs while you have it open.
 ### Build and install
 
 ```bash
-git clone https://github.com/zuujiscom/AudioEqualizer.git
-cd AudioEqualizer
+git clone https://github.com/zuujiscom/zuujis-media-player.git
+cd zuujis-media-player
 xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
-cp -R build/Build/Products/Release/AE2.app /Applications/
-open /Applications/AE2.app
+cp -R build/Build/Products/Release/"Zuujis Media Player.app" /Applications/
+open /Applications/"Zuujis Media Player.app"
 ```
 
 You can also open `AudioEqualizer.xcodeproj` in Xcode and press Run. The
@@ -117,8 +117,8 @@ shape it, and the **power button switches the EQ on and off**, so with the
 engine off the player plays flat. It uses its own audio path, separate from the
 system route, so it never processes your other audio twice.
 
-- **Player → Make AE2 the Default Player…** makes Finder open FLAC, MP3, M4A,
-  WAV, AIFF and AAC files in AE2 (macOS may ask you to confirm). A file opened
+- **Player → Make Zuujis Media Player the Default Player…** makes Finder open FLAC, MP3, M4A,
+  WAV, AIFF and AAC files in Zuujis Media Player (macOS may ask you to confirm). A file opened
   from Finder replaces the queue and plays.
 - **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the queue and
   plays; **Add to Queue…** (⌥⌘O) appends. **Show Queue** is ⇧⌘L.
@@ -233,7 +233,7 @@ git pull
 xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
 ```
 
-Quit the app, copy the new `AE2.app` over the old one in
+Quit the app, copy the new `Zuujis Media Player.app` over the old one in
 `/Applications`, and reopen it.
 
 ### Uninstall
@@ -247,12 +247,12 @@ Quit the app, copy the new `AE2.app` over the old one in
    ```
 
 3. To remove its audio-capture permission, open System Settings → Privacy &
-   Security → Screen & System Audio Recording, select AE2 and
+   Security → Screen & System Audio Recording, select Zuujis Media Player and
    remove it with the minus button.
 
 ### Troubleshooting
 
-- **No sound after pressing Start.** Check that AE2 is allowed
+- **No sound after pressing Start.** Check that Zuujis Media Player is allowed
   under System Settings → Privacy & Security → Screen & System Audio Recording.
   Then stop and start the engine.
 - **Sound is distorted.** Lower the master gain, or pull the boosted bands
@@ -261,11 +261,11 @@ Quit the app, copy the new `AE2.app` over the old one in
   press Start and then Stop, or switch the output device in System Settings →
   Sound and back.
 - **Reporting a problem.** Choose **Engine → Copy Diagnostics** and paste the
-  result into a [GitHub issue](https://github.com/zuujiscom/AudioEqualizer/issues).
+  result into a [GitHub issue](https://github.com/zuujiscom/zuujis-media-player/issues).
 
 ## License
 
-AE2 is free software, released under the
+Zuujis Media Player is free software, released under the
 [GNU General Public License, version 3 or (at your option) any later version](LICENSE)
 (GPL-3.0-or-later). You can use, study, change and share it. If you
 distribute a modified version, you must release its source under the same

@@ -114,7 +114,7 @@ struct HeaderBar: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("AE2")
+                Text("Zuujis Media Player")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 statusLine
