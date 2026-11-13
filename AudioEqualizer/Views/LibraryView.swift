@@ -35,10 +35,12 @@ struct LibraryView: View {
                         .frame(width: 250)
                     column(title: "Songs", count: songs.count) { songList }
                 }
+                // Fixed height: each column scrolls inside it instead of the
+                // card growing to fit a long list.
+                .frame(height: 300)
             }
         }
         .card()
-        .frame(minHeight: 260)
         .onAppear(perform: refresh)
         .onChange(of: library.tracks) { _, _ in refresh() }
         .onChange(of: artist) { _, _ in album = nil; refresh() }
@@ -147,7 +149,7 @@ struct LibraryView: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 200)
     }
 
     // MARK: Columns
