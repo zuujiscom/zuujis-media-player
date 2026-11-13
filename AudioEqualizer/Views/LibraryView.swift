@@ -27,6 +27,9 @@ struct LibraryView: View {
     @State private var namePrompt: NamePrompt?
     @State private var deleting: Playlist?
     @State private var notice: String?
+    /// Songs the user has clicked: ids (paths) in the current song list.
+    @State private var selection = Set<String>()
+    @State private var anchor: String?
 
     // Grouping a few thousand tracks is cheap but not free; redo it when the
     // library, the choice or the search changes, not on every redraw.
@@ -51,12 +54,12 @@ struct LibraryView: View {
                     case .artists:
                         column(title: "Artists", count: artists.count) { artistList }.frame(width: 210)
                         column(title: "Albums", count: albums.count) { albumList }.frame(width: 250)
-                        column(title: "Songs", count: songs.count) { songList }
+                        column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .genres:
                         column(title: "Genres", count: genres.count) { genreList }.frame(width: 160)
                         column(title: "Artists", count: artists.count) { artistList }.frame(width: 190)
                         column(title: "Albums", count: albums.count) { albumList }.frame(width: 210)
-                        column(title: "Songs", count: songs.count) { songList }
+                        column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .playlists:
                         column(title: "Playlists", count: playlists.playlists.count, accessory: {
                             Button { newPlaylist(with: []) } label: {
@@ -66,7 +69,7 @@ struct LibraryView: View {
                             .buttonStyle(.plain)
                             .help("New playlist")
                         }) { playlistList }.frame(width: 230)
-                        column(title: "Songs", count: currentPlaylist?.paths.count ?? 0) { playlistSongList }
+                        column(title: "Songs", count: currentPlaylist?.paths.count ?? 0, selected: selection.count) { playlistSongList }
                     }
                 }
                 // Fixed height: each column scrolls inside it instead of the
@@ -77,11 +80,12 @@ struct LibraryView: View {
         .card()
         .onAppear(perform: refresh)
         .onChange(of: library.tracks) { _, _ in refresh() }
-        .onChange(of: browseRaw) { _, _ in album = nil; refresh() }
-        .onChange(of: genre) { _, _ in artist = nil; album = nil; refresh() }
-        .onChange(of: artist) { _, _ in album = nil; refresh() }
-        .onChange(of: album) { _, _ in refreshSongs() }
+        .onChange(of: browseRaw) { _, _ in album = nil; clearSelection(); refresh() }
+        .onChange(of: genre) { _, _ in artist = nil; album = nil; clearSelection(); refresh() }
+        .onChange(of: artist) { _, _ in album = nil; clearSelection(); refresh() }
+        .onChange(of: album) { _, _ in clearSelection(); refreshSongs() }
         .onChange(of: search) { _, _ in refresh() }
+        .onChange(of: playlistID) { _, _ in clearSelection() }
         .sheet(item: $editing) { target in
             EditTagsSheet(target: target) { edit, write in
                 library.apply(edit, to: target.tracks, writeToFiles: write)
@@ -221,13 +225,13 @@ struct LibraryView: View {
     // MARK: Columns
 
     private func column<Content: View, Accessory: View>(
-        title: String, count: Int,
+        title: String, count: Int, selected: Int = 0,
         @ViewBuilder accessory: () -> Accessory,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("\(title.uppercased())  \(count)")
+                Text("\(title.uppercased())  \(count)" + (selected > 0 ? " · \(selected) SELECTED" : ""))
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
                     .foregroundStyle(Theme.ink.opacity(0.4))
@@ -244,8 +248,8 @@ struct LibraryView: View {
         }
     }
 
-    private func column<Content: View>(title: String, count: Int, @ViewBuilder content: () -> Content) -> some View {
-        column(title: title, count: count, accessory: { EmptyView() }, content: content)
+    private func column<Content: View>(title: String, count: Int, selected: Int = 0, @ViewBuilder content: () -> Content) -> some View {
+        column(title: title, count: count, selected: selected, accessory: { EmptyView() }, content: content)
     }
 
     // MARK: Genres
@@ -322,6 +326,7 @@ struct LibraryView: View {
         let playing = queue.current?.url
         return ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
             let isCurrent = song.url == playing
+            let isSelected = selection.contains(song.id)
             HStack(spacing: 8) {
                 Group {
                     if isCurrent {
@@ -355,23 +360,32 @@ struct LibraryView: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Theme.ink.opacity(0.06) : .clear))
+            .background(RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Theme.cyan.opacity(0.22) : (isCurrent ? Theme.ink.opacity(0.06) : .clear)))
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.play(urls: songs.map(\.url), startingAt: index) }
+            .onTapGesture { click(song.id, in: songs.map(\.id)) }
             .draggable(Self.dragPrefix + song.id)
             .contextMenu {
-                Button("Play") { player.play(urls: songs.map(\.url), startingAt: index) }
-                Button(playlists.isFavorite(song.id) ? "Remove from Favorites" : "Add to Favorites") {
-                    playlists.toggleFavorite(song.id)
+                let targets = songTargets(for: song)
+                let many = targets.count > 1
+                Button(many ? "Play \(targets.count) Songs" : "Play") {
+                    if many { player.play(urls: targets.map(\.url), startingAt: 0) }
+                    else { player.play(urls: songs.map(\.url), startingAt: index) }
                 }
-                Button("Add to Queue") { player.enqueue([song.url]) }
-                addToPlaylistMenu(suggestion: song.title) { [song] }
+                favoriteButton(targets.map(\.id))
+                Button(many ? "Add \(targets.count) Songs to Queue" : "Add to Queue") { enqueue(targets) }
+                addToPlaylistMenu(suggestion: many ? "" : song.title) { targets }
                 Divider()
-                Button("Edit Info…") { edit([song], song.title) }
-                genreMenu { [song] }
-                if library.isEdited(song) {
-                    Button("Revert Library Edits") { library.resetEdits(for: [song]) }
+                Button(many ? "Edit Info for \(targets.count) Songs…" : "Edit Info…") {
+                    edit(targets, many ? "\(targets.count) songs" : song.title)
                 }
+                genreMenu { targets }
+                if targets.contains(where: library.isEdited) {
+                    Button("Revert Library Edits") { library.resetEdits(for: targets) }
+                }
+                Divider()
+                Button("Select All Songs") { selection = Set(songs.map(\.id)) }
             }
         }
     }
@@ -448,6 +462,7 @@ struct LibraryView: View {
         let track = byPath[path]
         let isCurrent = queue.current?.url.path == path
         let exists = playable.contains(path)
+        let isSelected = selection.contains(path)
         let title = track?.title ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
         return HStack(spacing: 8) {
             Group {
@@ -478,12 +493,14 @@ struct LibraryView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .background(RoundedRectangle(cornerRadius: 5).fill(isCurrent ? Theme.ink.opacity(0.06) : .clear))
+        .background(RoundedRectangle(cornerRadius: 5)
+            .fill(isSelected ? Theme.cyan.opacity(0.22) : (isCurrent ? Theme.ink.opacity(0.06) : .clear)))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             guard exists, let start = playable.firstIndex(of: path) else { return }
             player.play(urls: playable.map { URL(fileURLWithPath: $0) }, startingAt: start)
         }
+        .onTapGesture { click(path, in: list.paths) }
         .draggable(Self.dragPrefix + path)
         // Dropping a song here puts it just before this one.
         .dropDestination(for: String.self) { items, _ in
@@ -496,25 +513,78 @@ struct LibraryView: View {
             return true
         }
         .contextMenu {
-            Button("Play") {
-                guard exists, let start = playable.firstIndex(of: path) else { return }
-                player.play(urls: playable.map { URL(fileURLWithPath: $0) }, startingAt: start)
+            let targets = list.paths.filter { selection.contains(path) ? selection.contains($0) : $0 == path }
+            let many = targets.count > 1
+            let playableTargets = targets.filter { FileManager.default.fileExists(atPath: $0) }
+            Button(many ? "Play \(playableTargets.count) Songs" : "Play") {
+                if many {
+                    player.play(urls: playableTargets.map { URL(fileURLWithPath: $0) }, startingAt: 0)
+                } else if exists, let start = playable.firstIndex(of: path) {
+                    player.play(urls: playable.map { URL(fileURLWithPath: $0) }, startingAt: start)
+                }
             }
-            .disabled(!exists)
-            Button("Add to Queue") { player.enqueue([URL(fileURLWithPath: path)]) }
-                .disabled(!exists)
-            Button(playlists.isFavorite(path) ? "Remove from Favorites" : "Add to Favorites") {
-                playlists.toggleFavorite(path)
+            .disabled(playableTargets.isEmpty)
+            Button(many ? "Add \(playableTargets.count) Songs to Queue" : "Add to Queue") {
+                player.enqueue(playableTargets.map { URL(fileURLWithPath: $0) })
             }
-            Divider()
-            Button("Move Up") { playlists.nudge(path, by: -1, in: list.id) }.disabled(index == 0)
-            Button("Move Down") { playlists.nudge(path, by: 1, in: list.id) }.disabled(index == list.paths.count - 1)
-            if let track {
+            .disabled(playableTargets.isEmpty)
+            favoriteButton(targets)
+            let tracks = targets.compactMap { byPath[$0] }
+            if !tracks.isEmpty { addToPlaylistMenu { tracks } }
+            if !many {
                 Divider()
-                Button("Edit Info…") { edit([track], track.title) }
+                Button("Move Up") { playlists.nudge(path, by: -1, in: list.id) }.disabled(index == 0)
+                Button("Move Down") { playlists.nudge(path, by: 1, in: list.id) }.disabled(index == list.paths.count - 1)
+            }
+            if !tracks.isEmpty {
+                Divider()
+                Button(many ? "Edit Info for \(tracks.count) Songs…" : "Edit Info…") {
+                    edit(tracks, many ? "\(tracks.count) songs" : (tracks[0].title))
+                }
+                genreMenu { tracks }
             }
             Divider()
-            Button("Remove from Playlist", role: .destructive) { playlists.remove([path], from: list.id) }
+            Button("Select All Songs") { selection = Set(list.paths) }
+            Button(many ? "Remove \(targets.count) Songs from Playlist" : "Remove from Playlist", role: .destructive) {
+                playlists.remove(Set(targets), from: list.id)
+                selection.subtract(targets)
+            }
+        }
+    }
+
+    // MARK: Selection
+
+    private func clearSelection() { selection = []; anchor = nil }
+
+    /// A click on a song: select it; with ⌘ toggle it; with ⇧ select the
+    /// range from the last click.
+    private func click(_ id: String, in order: [String]) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.shift), let a = anchor, let i = order.firstIndex(of: a), let j = order.firstIndex(of: id) {
+            selection = Set(order[min(i, j)...max(i, j)])
+        } else if flags.contains(.command) {
+            if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+            anchor = id
+        } else {
+            selection = [id]
+            anchor = id
+        }
+    }
+
+    /// What a right-click on `song` acts on: the whole selection when the
+    /// song is part of it, else just the song. In list order.
+    private func songTargets(for song: LibraryTrack) -> [LibraryTrack] {
+        guard selection.contains(song.id) else { return [song] }
+        return songs.filter { selection.contains($0.id) }
+    }
+
+    /// Hearts or un-hearts `paths` together: removes when all are favorites.
+    private func favoriteButton(_ paths: [String]) -> some View {
+        let all = paths.allSatisfy(playlists.isFavorite)
+        let many = paths.count > 1
+        return Button(all ? (many ? "Remove from Favorites" : "Remove from Favorites") : "Add to Favorites") {
+            if all { playlists.remove(Set(paths), from: PlaylistStore.favoritesID) }
+            else { playlists.add(paths, to: PlaylistStore.favoritesID) }
         }
     }
 
@@ -646,6 +716,7 @@ struct LibraryView: View {
 
     private func refreshSongs() {
         songs = LibraryModel.songs(scoped, artist: artist, album: album, search: search)
+        if browse != .playlists { selection.formIntersection(songs.map(\.id)) }
     }
 
     private func edit(_ tracks: [LibraryTrack], _ title: String, artist: String? = nil) {

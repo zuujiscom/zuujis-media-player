@@ -63,6 +63,36 @@ final class TagWriterTests: XCTestCase {
         XCTAssertTrue(try run(["flac", "-t", url.path]).contains("ok"))
     }
 
+    /// Some rips have an ID3v2 tag glued in front of the FLAC stream. It is
+    /// converted to Vorbis comments and dropped; the audio is untouched.
+    func testFLACWithID3PrefixIsConvertedAndAudioKept() throws {
+        let url = try make("id3.flac")
+        let flac = try Data(contentsOf: url)
+        func frame(_ id: String, _ text: String) -> Data {
+            let body = Data([0]) + Data(text.utf8)
+            let n = body.count
+            return Data(id.utf8) + Data([0, 0, UInt8(n >> 8), UInt8(n & 0xFF), 0, 0]) + body
+        }
+        let frames = frame("TIT2", "Song") + frame("TPE1", "Band") + frame("TCON", "(17)")
+        let n = frames.count
+        let header = Data("ID3".utf8) + Data([3, 0, 0x80, UInt8(n >> 21 & 0x7F), UInt8(n >> 14 & 0x7F), UInt8(n >> 7 & 0x7F), UInt8(n & 0x7F)])
+        try (header + frames + flac).write(to: url)
+        let before = try audioHash(url)
+
+        XCTAssertEqual(FLACTags.read(url)?["TITLE"], nil)   // reader skips the prefix
+        try TagWriter.write(TagEdit(year: 1987, trackNumber: 2), to: url)
+
+        XCTAssertEqual(try Data(contentsOf: url).prefix(4), Data("fLaC".utf8))
+        let tags = try XCTUnwrap(FLACTags.read(url))
+        XCTAssertEqual(tags["TITLE"], "Song")
+        XCTAssertEqual(tags["ARTIST"], "Band")
+        XCTAssertNil(tags["GENRE"])           // "(17)" is an ID3v1 index, not a name
+        XCTAssertEqual(tags["DATE"], "1987")
+        XCTAssertEqual(tags["TRACKNUMBER"], "2")
+        XCTAssertEqual(try audioHash(url), before)
+        XCTAssertTrue(try run(["flac", "-t", url.path]).contains("ok"))
+    }
+
     func testFLACInPlaceEditAfterPaddingExists() throws {
         let url = try make("b.flac")
         try TagWriter.write(TagEdit(title: "First", artist: "A"), to: url) // gives the file padding

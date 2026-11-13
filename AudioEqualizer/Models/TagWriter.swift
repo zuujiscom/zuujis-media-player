@@ -74,9 +74,15 @@ private enum FLACWriter {
     static func write(_ edit: TagEdit, to url: URL) throws {
         let handle = try FileHandle(forUpdating: url)
         defer { try? handle.close() }
+        // Some rips have an ID3v2 tag glued in front of the FLAC stream. That is
+        // not valid FLAC: the tag is converted to Vorbis comments and dropped,
+        // which means the file has to be rewritten rather than patched in place.
+        let prefix = try ID3Prefix.read(from: handle)
+        try handle.seek(toOffset: UInt64(prefix?.length ?? 0))
         guard try handle.read(upToCount: 4) == Data("fLaC".utf8) else {
             throw TagWriter.WriteError.malformed("Not a FLAC file")
         }
+        let base = prefix?.length ?? 0
 
         // Read every metadata block (they sit before the audio).
         var blocks: [Block] = []
@@ -95,11 +101,20 @@ private enum FLACWriter {
             if isLast { break }
         }
         let audioStart = try handle.offset()
-        let oldRegion = Int(audioStart) - 4
+        let oldRegion = Int(audioStart) - 4 - base
         guard blocks.first?.type == 0 else { throw TagWriter.WriteError.malformed("FLAC has no STREAMINFO") }
 
         // Rebuild: edited comment block in place of the old one, padding dropped.
-        let comment = updatedComment(blocks.first { $0.type == 4 }?.data, edit)
+        var existing = blocks.first { $0.type == 4 }?.data
+        if let prefix {
+            // The ID3 values fill in what the FLAC's own comments lack.
+            let own = existing.map(commentEntries) ?? []
+            func key(_ entry: String) -> String? { entry.firstIndex(of: "=").map { entry[..<$0].uppercased() } }
+            let have = Set(own.compactMap(key))
+            let extra = prefix.entries.filter { key($0).map { !have.contains($0) } ?? false }
+            existing = commentBlock(entries: own + extra)
+        }
+        let comment = updatedComment(existing, edit)
         var rebuilt: [Block] = []
         var placed = false
         for block in blocks where block.type != 1 {
@@ -112,7 +127,7 @@ private enum FLACWriter {
         for b in rebuilt where b.data.count >= 1 << 24 { throw TagWriter.WriteError.malformed("Metadata block too large") }
         let spare = oldRegion - size
 
-        if spare == 0 || spare >= 4 {
+        if prefix == nil, spare == 0 || spare >= 4 {
             // Fits in the reserved space: rewrite just the metadata.
             var out = serialize(rebuilt, padding: spare == 0 ? nil : spare - 4)
             if out.count != oldRegion { out = serialize(rebuilt, padding: nil) }
@@ -140,6 +155,35 @@ private enum FLACWriter {
             try? FileManager.default.removeItem(at: temp)
             throw error
         }
+    }
+
+    /// The "NAME=value" entries of a Vorbis comment block.
+    static func commentEntries(_ block: Data) -> [String] {
+        let bytes = [UInt8](block)
+        var i = 0
+        func u32() -> Int? {
+            guard i + 4 <= bytes.count else { return nil }
+            defer { i += 4 }
+            return Int(bytes[i]) | Int(bytes[i + 1]) << 8 | Int(bytes[i + 2]) << 16 | Int(bytes[i + 3]) << 24
+        }
+        guard let vendor = u32(), i + vendor <= bytes.count else { return [] }
+        i += vendor
+        guard let count = u32() else { return [] }
+        var out: [String] = []
+        for _ in 0..<count {
+            guard let len = u32(), i + len <= bytes.count else { break }
+            out.append(String(decoding: bytes[i..<i + len], as: UTF8.self)); i += len
+        }
+        return out
+    }
+
+    /// A Vorbis comment block holding `entries` ("NAME=value").
+    static func commentBlock(entries: [String]) -> Data {
+        func le32(_ n: Int) -> Data { Data([UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), UInt8(n >> 16 & 0xFF), UInt8(n >> 24 & 0xFF)]) }
+        let vendor = Data("AE2".utf8)
+        var out = le32(vendor.count) + vendor + le32(entries.count)
+        for entry in entries { let d = Data(entry.utf8); out += le32(d.count) + d }
+        return out
     }
 
     /// Metadata blocks as bytes, followed by a padding block of `padding`
@@ -329,5 +373,81 @@ private enum ID3Writer {
 
     private static func syncsafeBytes(_ n: Int) -> [UInt8] {
         [UInt8(n >> 21 & 0x7F), UInt8(n >> 14 & 0x7F), UInt8(n >> 7 & 0x7F), UInt8(n & 0x7F)]
+    }
+}
+
+
+// MARK: - ID3 in front of FLAC
+
+/// An ID3v2 tag at the start of a file, read only so its text frames can be
+/// carried over as Vorbis comments. Handles v2.3 and v2.4, with or without
+/// unsynchronisation.
+enum ID3Prefix {
+    struct Tag { var length: Int; var entries: [String] }
+
+    /// The tag at the start of `handle`, or nil when the file does not begin with one.
+    static func read(from handle: FileHandle) throws -> Tag? {
+        try handle.seek(toOffset: 0)
+        guard let head = try handle.read(upToCount: 10), head.count == 10,
+              head.prefix(3) == Data("ID3".utf8) else { return nil }
+        let bytes = [UInt8](head)
+        let version = Int(bytes[3]), flags = bytes[5]
+        let size = Int(bytes[6] & 0x7F) << 21 | Int(bytes[7] & 0x7F) << 14 | Int(bytes[8] & 0x7F) << 7 | Int(bytes[9] & 0x7F)
+        let length = 10 + size + (flags & 0x10 != 0 ? 10 : 0)
+        guard version == 3 || version == 4, let body = try handle.read(upToCount: size), body.count == size else {
+            return Tag(length: length, entries: [])
+        }
+        var data = [UInt8](body)
+        if flags & 0x80 != 0 {
+            var plain: [UInt8] = []
+            var i = 0
+            while i < data.count {
+                plain.append(data[i])
+                if data[i] == 0xFF, i + 1 < data.count, data[i + 1] == 0 { i += 1 }
+                i += 1
+            }
+            data = plain
+        }
+        var i = 0
+        if flags & 0x40 != 0, data.count >= 4 {   // extended header
+            let n = version == 4
+                ? Int(data[0] & 0x7F) << 21 | Int(data[1] & 0x7F) << 14 | Int(data[2] & 0x7F) << 7 | Int(data[3] & 0x7F)
+                : 4 + (Int(data[0]) << 24 | Int(data[1]) << 16 | Int(data[2]) << 8 | Int(data[3]))
+            i = min(n, data.count)
+        }
+        let names = ["TIT2": "TITLE", "TPE1": "ARTIST", "TALB": "ALBUM", "TCON": "GENRE", "TRCK": "TRACKNUMBER",
+                     "TPOS": "DISCNUMBER", "TYER": "DATE", "TDRC": "DATE", "TPE2": "ALBUMARTIST", "TCOM": "COMPOSER"]
+        var entries: [String] = []
+        var seen = Set<String>()
+        while i + 10 <= data.count, data[i] != 0 {
+            let id = String(decoding: data[i..<i + 4], as: UTF8.self)
+            let n = version == 4
+                ? Int(data[i + 4] & 0x7F) << 21 | Int(data[i + 5] & 0x7F) << 14 | Int(data[i + 6] & 0x7F) << 7 | Int(data[i + 7] & 0x7F)
+                : Int(data[i + 4]) << 24 | Int(data[i + 5]) << 16 | Int(data[i + 6]) << 8 | Int(data[i + 7])
+            i += 10
+            guard n >= 0, i + n <= data.count else { break }
+            if let name = names[id], n > 1, !seen.contains(name), let text = decode(Array(data[i..<i + n])), !text.isEmpty {
+                // A bare "(17)" genre is an index into the old ID3v1 list, not a name.
+                if !(name == "GENRE" && text.hasPrefix("(") && text.hasSuffix(")")) {
+                    entries.append("\(name)=\(text)")
+                    seen.insert(name)
+                }
+            }
+            i += n
+        }
+        return Tag(length: length, entries: entries)
+    }
+
+    private static func decode(_ frame: [UInt8]) -> String? {
+        guard let encoding = frame.first else { return nil }
+        let body = Array(frame.dropFirst())
+        let string: String?
+        switch encoding {
+        case 0: string = String(bytes: body, encoding: .isoLatin1)
+        case 1: string = String(bytes: body, encoding: .utf16)
+        case 2: string = String(bytes: body, encoding: .utf16BigEndian)
+        default: string = String(bytes: body, encoding: .utf8)
+        }
+        return string?.replacingOccurrences(of: "\0", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

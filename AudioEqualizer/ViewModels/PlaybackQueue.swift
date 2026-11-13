@@ -351,6 +351,17 @@ struct TrackMetadata: Sendable {
                 meta.year = LibraryModel.year(from: await text(.commonIdentifierCreationDate))
             }
             if let all = try? await asset.load(.metadata) {
+                // The common "creation date" is often empty for MP3: ask for the
+                // ID3 year (TYER, v2.3) and recording time (TDRC, v2.4) directly.
+                if meta.year == nil {
+                    for id in [AVMetadataIdentifier.id3MetadataYear, .id3MetadataRecordingTime, .id3MetadataOriginalReleaseYear] {
+                        if let item = AVMetadataItem.metadataItems(from: all, filteredByIdentifier: id).first,
+                           let year = LibraryModel.year(from: try? await item.load(.stringValue)) {
+                            meta.year = year
+                            break
+                        }
+                    }
+                }
                 if let item = AVMetadataItem.metadataItems(from: all, filteredByIdentifier: .id3MetadataTrackNumber).first {
                     meta.trackNumber = LibraryModel.leadingNumber(try? await item.load(.stringValue))
                 }

@@ -254,6 +254,13 @@ enum FLACTags {
     static func read(_ url: URL) -> [String: String]? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
+        // Some rips have an ID3v2 tag glued in front of the stream: skip it.
+        if let head = try? handle.read(upToCount: 10), head.count == 10, head.prefix(3) == Data("ID3".utf8) {
+            let size = Int(head[6] & 0x7F) << 21 | Int(head[7] & 0x7F) << 14 | Int(head[8] & 0x7F) << 7 | Int(head[9] & 0x7F)
+            try? handle.seek(toOffset: UInt64(10 + size))
+        } else {
+            try? handle.seek(toOffset: 0)
+        }
         guard let magic = try? handle.read(upToCount: 4), magic == Data("fLaC".utf8) else { return nil }
 
         var fields: [String: String] = [:]

@@ -274,11 +274,11 @@ final class LibraryStore: ObservableObject {
         var folders: [URL]
         var tracks: [LibraryTrack]
         var edits: [String: TagEdit]?
-        /// 2 = tracks carry a genre. An older file is re-read once to fill it in.
+        /// 2 = tracks carry a genre; 3 = MP3 years are read from ID3. An older file is re-read once to fill it in.
         var schema: Int?
     }
 
-    private static let schema = 2
+    private static let schema = 3
 
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),

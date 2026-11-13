@@ -152,6 +152,10 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   songs around it as the queue. Right-click for **Play**, **Add to Queue**,
   **Add to Playlist**, **Edit Info…** and **Set Genre**. The search box matches
   title, artist, album and genre.
+- **Selecting songs.** One click selects a song; **⌘-click** adds or removes
+  one and **⇧-click** selects a range. Right-click acts on the whole selection:
+  Play, Add to Queue, Add to Playlist, Favorites, Edit Info and Set Genre. With
+  several selected, Edit Info changes only the fields you edit, on all of them.
 - **Genres** view: pick a genre to narrow the artists, albums and songs to it.
   Songs with no genre are grouped last as *No Genre*. Spellings that differ
   only in case or spaces count as one genre. Right-click a genre to
