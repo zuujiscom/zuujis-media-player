@@ -1,10 +1,10 @@
-# Audio Equalizer
+# AE2
 
 A system-wide equalizer for macOS. It shapes and boosts whatever your Mac is
 playing (music, videos, games, calls) on whichever output you are using, with
 no virtual audio driver to install.
 
-![Audio Equalizer's main window with the Rock preset applied: the EQ curve drawn over the live spectrum, above a 31-band equalizer whose faders are lit by the signal at each band, next to the visualizer window showing the Skyline mode.](docs/screenshot.webp)
+![AE2's main window with the Rock preset applied: the EQ curve drawn over the live spectrum, above a 31-band equalizer whose faders are lit by the signal at each band, next to the visualizer window showing the Skyline mode.](docs/screenshot.webp)
 
 - **10, 15 or 31 band graphic EQ**, from 20 Hz to 20 kHz, ±24 dB per band.
 - **Master gain up to +24 dB**, for quiet laptops, speakers and headphones.
@@ -15,6 +15,9 @@ no virtual audio driver to install.
 - **A response graph** that draws the EQ's curve over the live spectrum. Drag
   across it to draw the curve you want; double-click a band to reset it.
 - **Bypass** (⌘B) to compare the sound with and without the EQ.
+- **A built-in file player** for lossless audio (FLAC, ALAC, WAV, AIFF) and
+  MP3/AAC, with a playlist, gapless playback and Now Playing, played through
+  the same EQ.
 - **A visualizer window** with 50 audio-driven modes — fractals, a raymarched
   skyline, ridgelines, a retro sunset, particle swarms and more — a shuffle
   that moves between them on the beat, and import for MilkDrop `.milk`
@@ -22,13 +25,13 @@ no virtual audio driver to install.
 
 ## How it works
 
-Audio Equalizer uses the Core Audio *process tap* API added in macOS 26. When
+AE2 uses the Core Audio *process tap* API added in macOS 26. When
 you press Start, it:
 
 1. Creates a **process tap** that captures everything the Mac is playing,
    except the app's own audio. While the tap is active, macOS mutes the
    original sound, so you hear only the equalized version.
-2. Creates an **aggregate audio device** named "Audio Equalizer Output" that
+2. Creates an **aggregate audio device** named "AE2 Output" that
    combines the tap with your real speakers or headphones.
 3. Runs the captured audio through the EQ and plays the result on your output
    device, all in one clock-synced audio callback.
@@ -69,8 +72,8 @@ background service. The app only runs while you have it open.
 git clone https://github.com/zuujiscom/AudioEqualizer.git
 cd AudioEqualizer
 xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
-cp -R build/Build/Products/Release/AudioEqualizer.app /Applications/
-open /Applications/AudioEqualizer.app
+cp -R build/Build/Products/Release/AE2.app /Applications/
+open /Applications/AE2.app
 ```
 
 You can also open `AudioEqualizer.xcodeproj` in Xcode and press Run. The
@@ -102,6 +105,25 @@ back that device's saved curve.
   **Flat** button) clears the curve.
 - Presets live in `~/Library/Application Support/AudioEqualizer/`. Use
   **File → Reveal Presets File in Finder** to get there.
+
+### Player
+
+The bar along the bottom plays audio files through the same EQ, separately from
+the system route, so it works whether or not the engine is running.
+
+- **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the playlist and
+  plays; **Add to Playlist…** (⌥⌘O) appends. **Show Playlist** is ⇧⌘L.
+- Keys: **Space** play/pause (main window), **⌘→ / ⌘←** next and previous,
+  **⌥⌘→ / ⌥⌘←** forward and back 10 seconds, **⌘↑ / ⌘↓** player volume,
+  **⌘.** stop.
+- The keyboard's play, next and previous keys control the player while it is
+  playing or paused, or while the app is in front. Claiming them directly needs
+  **Accessibility** permission (System Settings → Privacy & Security); without
+  it macOS decides who gets the keys.
+- The output device follows each track's sample rate when the device supports
+  it (the button beside the volume slider turns this off). It is skipped while
+  the system EQ is running, and the previous rate is restored when playback
+  stops.
 
 ### Visualizer
 
@@ -138,7 +160,7 @@ git pull
 xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
 ```
 
-Quit the app, copy the new `AudioEqualizer.app` over the old one in
+Quit the app, copy the new `AE2.app` over the old one in
 `/Applications`, and reopen it.
 
 ### Uninstall
@@ -152,12 +174,12 @@ Quit the app, copy the new `AudioEqualizer.app` over the old one in
    ```
 
 3. To remove its audio-capture permission, open System Settings → Privacy &
-   Security → Screen & System Audio Recording, select Audio Equalizer and
+   Security → Screen & System Audio Recording, select AE2 and
    remove it with the minus button.
 
 ### Troubleshooting
 
-- **No sound after pressing Start.** Check that Audio Equalizer is allowed
+- **No sound after pressing Start.** Check that AE2 is allowed
   under System Settings → Privacy & Security → Screen & System Audio Recording.
   Then stop and start the engine.
 - **Sound is distorted.** Lower the master gain, or pull the boosted bands
@@ -170,7 +192,7 @@ Quit the app, copy the new `AudioEqualizer.app` over the old one in
 
 ## License
 
-Audio Equalizer is free software, released under the
+AE2 is free software, released under the
 [GNU General Public License, version 3 or (at your option) any later version](LICENSE)
 (GPL-3.0-or-later). You can use, study, change and share it. If you
 distribute a modified version, you must release its source under the same

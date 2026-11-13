@@ -98,6 +98,39 @@ final class PlayerEngine: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var configObserver: NSObjectProtocol?
 
+    // MARK: - Output sample rate
+
+    /// Runs the output device at each track's own rate, so the mixer has
+    /// nothing to resample. Off leaves the device wherever it is.
+    @Published var matchSampleRate: Bool = UserDefaults.standard.object(forKey: "playerMatchSampleRate") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(matchSampleRate, forKey: "playerMatchSampleRate") }
+    }
+
+    /// The device and rate to put back when playback stops.
+    private var restoreRate: (device: AudioDeviceID, rate: Double)?
+
+    /// Called before each new engine is built, while no engine is running.
+    /// Skipped while the system route runs: its tap and aggregate device are
+    /// built for one rate and would go silent if it changed under them.
+    private func matchDeviceRate(to fileRate: Double) {
+        guard matchSampleRate, equalizer?.isRunning != true,
+              let device = OutputRate.defaultOutputDevice(),
+              let current = OutputRate.nominalRate(of: device) else { return }
+        guard let target = OutputRate.bestRate(for: fileRate, in: OutputRate.supportedRanges(of: device)),
+              target != current else { return }
+        if restoreRate?.device != device { restoreRate = (device, current) }
+        OutputRate.setNominalRate(target, of: device)
+    }
+
+    /// Puts the device back at the rate it had before playback matched it.
+    private func restoreDeviceRate() {
+        guard let saved = restoreRate else { return }
+        restoreRate = nil
+        guard equalizer?.isRunning != true,
+              OutputRate.nominalRate(of: saved.device) != saved.rate else { return }
+        OutputRate.setNominalRate(saved.rate, of: saved.device)
+    }
+
     // MARK: - Scheduling
 
     /// One scheduled stretch of one file. `startSample` is where it begins on
@@ -500,6 +533,7 @@ final class PlayerEngine: ObservableObject {
         segments = []
         pausedFrame = 0
         state = .stopped
+        restoreDeviceRate()
         clearMeters()
         timelineChanged.send()
     }
@@ -520,6 +554,12 @@ final class PlayerEngine: ObservableObject {
     }
 
     private func buildGraph(format: AVAudioFormat) throws {
+        // Drop the old engine's observer first: changing the device rate makes
+        // it post a configuration change, which must not trigger a rebuild.
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = nil
+        matchDeviceRate(to: format.sampleRate)
+
         let newEngine = AVAudioEngine()
         let newPlayer = AVAudioPlayerNode()
         let bandCount = equalizer?.bands.count ?? EQPreset.defaultBands.count
@@ -538,7 +578,6 @@ final class PlayerEngine: ObservableObject {
         applyEQ()
         installMeterTap()
 
-        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         // The output device changed or the hardware reconfigured: the engine
         // has stopped itself, and the player node has lost its schedule.
         configObserver = NotificationCenter.default.addObserver(

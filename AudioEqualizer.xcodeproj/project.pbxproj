@@ -30,6 +30,7 @@
 		10000000000000000000000F /* PresetSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* PresetSectionView.swift */; };
 		100000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* Assets.xcassets */; };
 		100000000000000000000070 /* PlayerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000070 /* PlayerEngine.swift */; };
+		1000000000000000000000A1 /* OutputRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2000000000000000000000A1 /* OutputRate.swift */; };
 		100000000000000000000071 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000071 /* PlayerView.swift */; };
 		100000000000000000000072 /* NowPlaying.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000072 /* NowPlaying.swift */; };
 		100000000000000000000073 /* PlaybackQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000073 /* PlaybackQueue.swift */; };
@@ -61,8 +62,9 @@
 		200000000000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		200000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000012 /* AudioEqualizer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AudioEqualizer.entitlements; sourceTree = "<group>"; };
-		200000000000000000000013 /* AudioEqualizer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioEqualizer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000013 /* AE2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AE2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000070 /* PlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEngine.swift; sourceTree = "<group>"; };
+		2000000000000000000000A1 /* OutputRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRate.swift; sourceTree = "<group>"; };
 		200000000000000000000071 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		200000000000000000000072 /* NowPlaying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlaying.swift; sourceTree = "<group>"; };
 		200000000000000000000073 /* PlaybackQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackQueue.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 				200000000000000000000004 /* SpectrumAnalyzer.swift */,
 				200000000000000000000051 /* MilkdropPreset.swift */,
 				200000000000000000000070 /* PlayerEngine.swift */,
+				2000000000000000000000A1 /* OutputRate.swift */,
 				200000000000000000000072 /* NowPlaying.swift */,
 			);
 			path = Audio;
@@ -175,7 +178,7 @@
 		400000000000000000000007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000013 /* AudioEqualizer.app */,
+				200000000000000000000013 /* AE2.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -197,7 +200,7 @@
 			);
 			name = AudioEqualizer;
 			productName = AudioEqualizer;
-			productReference = 200000000000000000000013 /* AudioEqualizer.app */;
+			productReference = 200000000000000000000013 /* AE2.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -254,6 +257,7 @@
 				100000000000000000000004 /* SpectrumAnalyzer.swift in Sources */,
 				100000000000000000000051 /* MilkdropPreset.swift in Sources */,
 				100000000000000000000070 /* PlayerEngine.swift in Sources */,
+				1000000000000000000000A1 /* OutputRate.swift in Sources */,
 				100000000000000000000072 /* NowPlaying.swift in Sources */,
 				100000000000000000000005 /* AudioDevice.swift in Sources */,
 				100000000000000000000006 /* EQBand.swift in Sources */,
@@ -424,7 +428,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuujis.AudioEqualizer;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = AE2;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Debug;
@@ -450,7 +454,7 @@
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuujis.AudioEqualizer;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = AE2;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;

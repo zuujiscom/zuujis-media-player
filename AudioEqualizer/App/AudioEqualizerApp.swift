@@ -124,10 +124,10 @@ struct AudioEqualizerApp: App {
             // preset name and rename dialogs.
             CommandGroup(replacing: .undoRedo) { }
             CommandGroup(replacing: .appInfo) {
-                Button("About Audio Equalizer") {
+                Button("About AE2") {
                     NSApplication.shared.orderFrontStandardAboutPanel(
                         options: [
-                            .applicationName: "Audio Equalizer",
+                            .applicationName: "AE2",
                             .applicationVersion: "1.0.0",
                             .version: "1",
                             .credits: NSAttributedString(string: "Native macOS Equalizer for Apple Silicon")
@@ -193,25 +193,33 @@ struct AudioEqualizerApp: App {
                 Button("Stop") {
                     player.stop()
                 }
+                .keyboardShortcut(".", modifiers: [.command])
                 .disabled(player.state == .stopped)
 
                 Divider()
 
                 Button("Next Track") { player.next() }
-                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                    .keyboardShortcut(.rightArrow, modifiers: [.command])
                     .disabled(player.state == .stopped)
 
                 Button("Previous Track") { player.previous() }
-                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                    .keyboardShortcut(.leftArrow, modifiers: [.command])
                     .disabled(player.state == .stopped)
 
                 Button("Back 10 Seconds") { player.skip(by: -10) }
-                    .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                     .disabled(player.state == .stopped)
 
                 Button("Forward 10 Seconds") { player.skip(by: 10) }
-                    .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                     .disabled(player.state == .stopped)
+
+                Divider()
+
+                Button("Volume Up") { player.volume = min(1, player.volume + 0.1) }
+                    .keyboardShortcut(.upArrow, modifiers: [.command])
+                Button("Volume Down") { player.volume = max(0, player.volume - 0.1) }
+                    .keyboardShortcut(.downArrow, modifiers: [.command])
 
                 Divider()
 

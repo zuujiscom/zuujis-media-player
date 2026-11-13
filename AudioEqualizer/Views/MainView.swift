@@ -62,7 +62,7 @@ struct HeaderBar: View {
             PowerButton()
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Audio Equalizer")
+                Text("AE2")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 statusLine

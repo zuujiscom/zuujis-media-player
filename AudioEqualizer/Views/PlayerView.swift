@@ -26,6 +26,27 @@ struct PlayerBar: View {
 
             volume
 
+            // Space toggles play/pause in this window. A text field being
+            // edited takes the key first, and the visualizer has its own.
+            Button("") { player.togglePlayPause() }
+                .keyboardShortcut(.space, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+
+            Button {
+                player.matchSampleRate.toggle()
+            } label: {
+                Image(systemName: "waveform.badge.magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(player.matchSampleRate ? 0.95 : 0.4))
+                    .pill()
+            }
+            .buttonStyle(.plain)
+            .help(player.matchSampleRate
+                  ? "Output rate follows each track (on, applies from the next track or rebuild)"
+                  : "Output rate left as the device has it (off)")
+
             Button {
                 openWindow(id: AudioEqualizerApp.playlistWindowID)
             } label: {

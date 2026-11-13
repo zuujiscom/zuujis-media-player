@@ -511,7 +511,7 @@ final class AudioEngine: NSObject, ObservableObject {
         // Core Audio often has no process object for us to reference.
         let excludedProcesses = Self.selfProcessObjectID().map { [$0] } ?? []
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: excludedProcesses)
-        description.name = "Audio Equalizer System Tap"
+        description.name = "AE2 System Tap"
         description.muteBehavior = .mutedWhenTapped
         description.isPrivate = true
         if let bundleID = Bundle.main.bundleIdentifier {
@@ -550,7 +550,7 @@ final class AudioEngine: NSObject, ObservableObject {
     /// process tap as the input-stream source.
     private func aggregateComposition(outputUID: String, tapUID: String) -> [String: Any] {
         [
-            kAudioAggregateDeviceNameKey: "Audio Equalizer Output",
+            kAudioAggregateDeviceNameKey: "AE2 Output",
             kAudioAggregateDeviceUIDKey: aggregateUID,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
@@ -1182,7 +1182,7 @@ final class AudioEngine: NSObject, ObservableObject {
     func diagnosticsReport() -> String {
         let device = availableOutputDevices.first(where: { $0.id == selectedOutputDeviceID })
         var lines: [String] = [
-            "Audio Equalizer diagnostics",
+            "AE2 diagnostics",
             "Engine:        \(isRunning ? "running" : "stopped")",
             "Bypass:        \(isBypassed ? "active" : "off")",
             "Output device: \(device?.name ?? "—")\(device?.isBuiltIn == true ? " (built-in)" : "")",
