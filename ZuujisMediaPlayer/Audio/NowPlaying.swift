@@ -131,7 +131,7 @@ final class NowPlayingController {
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyPlaybackDuration: track.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime(),
-            MPNowPlayingInfoPropertyPlaybackRate: player.state == .playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: player.state == .playing ? player.speed : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
         ]
         if let artist = track.artist { info[MPMediaItemPropertyArtist] = artist }

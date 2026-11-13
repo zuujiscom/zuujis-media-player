@@ -12,6 +12,9 @@ struct SpectrumView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
     @EnvironmentObject private var player: PlayerEngine
+    /// Inside `EQWidget`: the widget supplies the header and the preamp, so
+    /// only the graph and a one-line footer remain, and the card is its own.
+    var embedded = false
     /// The ± dB span of the graph. Widens by itself when a band exceeds it.
     @AppStorage("eqGraphRange") private var rangeSetting = 12.0
     @State private var smoother = SpectrumSmoother()
@@ -25,6 +28,7 @@ struct SpectrumView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !embedded {
             HStack(spacing: 10) {
                 PowerButton()
                 SectionTitle(text: "Response", systemImage: "waveform.path.ecg")
@@ -62,6 +66,7 @@ struct SpectrumView: View {
             }
 
             PreampRow()
+            }
 
             GeometryReader { geo in
                 let layout = GraphLayout(size: geo.size, range: range)
@@ -94,12 +99,41 @@ struct SpectrumView: View {
                     }
                 }
             }
-            .frame(minHeight: 190, idealHeight: 250, maxHeight: .infinity)
+            .frame(minHeight: embedded ? 150 : 190, idealHeight: 250, maxHeight: .infinity)
             .background(Theme.well.opacity(Theme.palette.isLight ? 1 : 0.72))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+
+            if embedded { embeddedFooter }
         }
-        .card()
+        .cardIf(!embedded)
+    }
+
+    /// What the full header carries besides the controls `EQWidget` now owns.
+    private var embeddedFooter: some View {
+        HStack(spacing: 10) {
+            LevelMeter(level: meters.snapshot.level)
+                .frame(maxWidth: 120, minHeight: 6, maxHeight: 6)
+                .help("Output level")
+            if engine.isRunning {
+                infoChip(meters.snapshot.latencyMs > 0 ? String(format: "%.1f ms", meters.snapshot.latencyMs) : "— ms")
+            }
+            Spacer(minLength: 8)
+            Button {
+                rangeSetting = rangeSetting > 12 ? 12 : 24
+            } label: {
+                Text("±\(Int(range)) dB")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.ink.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .frame(height: 22)
+                    .background(Capsule().fill(Theme.ink.opacity(0.07)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Switch the graph between ±12 dB and ±24 dB")
+        }
     }
 
     private func infoChip(_ text: String) -> some View {

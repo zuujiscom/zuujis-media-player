@@ -50,3 +50,18 @@ subprocess.run(['ffmpeg','-y','-loglevel','error','-f','lavfi','-i',"aevalsrc=ex
   '-af','aecho=0.6:0.4:120:0.25,volume=0.8','-c:a','flac','-metadata','title=Saltwater Radio','-metadata','artist=Velvet Harbor',
   '-metadata','album=Low Tide Letters','-metadata','date=2021','-metadata','genre=Indie Rock','-metadata','track=1',song],check=True)
 print("playing song:",song)
+
+# Synced lyrics for the audible song: invented words, one line about every six
+# seconds, in an .lrc file beside it (this is also how real lyrics are found).
+lines=["Switch on the radio, let the salt air in","The harbor's got a signal and it's calling me again",
+"Paper lanterns drifting past the pier","Every little wave is spelling out your name","",
+"Low tide letters on the shore","Say what you came here to say","Carry me back past the lighthouse door","Before the morning takes the bay","",
+"Saltwater radio, tune me in","Static on the water, soft and thin","Play the song we never finished","Till the tide forgets where it begins","",
+"Northbound lights across the sound","Counting every mile that I have found","Hold the line, keep the dial low","There's a signal where the quiet goes","",
+"Saltwater radio, tune me in","Static on the water, soft and thin","Play the song we never finished","Till the tide forgets where it begins","",
+"And when the last light folds away","I'll still be humming what you used to play","Saltwater radio, carry on","Carry on until the dawn"]
+t=6.0; out=["[ar:Velvet Harbor]","[ti:Saltwater Radio]","[al:Low Tide Letters]"]
+for l in lines:
+  out.append("[%02d:%05.2f]%s"%(int(t//60),t%60,l)); t+=3.0 if l=="" else 6.2
+open(song.rsplit('.',1)[0]+'.lrc','w').write("\n".join(out)+"\n")
+print("lyrics written")

@@ -6,35 +6,19 @@ struct MainView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var presets: PresetManager
     @EnvironmentObject private var player: PlayerEngine
-    @AppStorage(Panels.library) private var showLibrary = true
-    @AppStorage(Panels.eq) private var eqPanel = Panels.response
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
+
+    /// The smallest the window goes; below the widgets' own minimums the
+    /// deck stacks them and scrolls.
+    static let minSize = CGSize(width: 560, height: 440)
 
     var body: some View {
         let _ = Theme.apply(themeID)
         VStack(spacing: 0) {
             HeaderBar()
-            PlayerBar()
-            // The graph and the faders stretch to fill whatever height the
-            // window has; the scroll view only matters once the band details
-            // table is open and the content outgrows it.
-            GeometryReader { geo in
-                ScrollView {
-                    VStack(spacing: 14) {
-                        if showLibrary { LibraryView(fillsHeight: eqPanel == Panels.hidden) }
-                        if eqPanel == Panels.response { SpectrumView() }
-                        if eqPanel == Panels.equalizer {
-                            BandControlsView()
-                                .frame(maxWidth: .infinity)
-                        }
-                        if !showLibrary && eqPanel == Panels.hidden { AllPanelsHidden() }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 16)
-                    .frame(minHeight: geo.size.height)
-                }
-            }
+            // The widgets (player, equalizer) arrange themselves in what is
+            // left of the window: side by side, stacked, or one alone.
+            WidgetDeck()
         }
         // Dropping audio files or a folder anywhere on the window plays them.
         .dropDestination(for: URL.self) { urls, _ in
@@ -43,7 +27,7 @@ struct MainView: View {
             player.open(files)
             return true
         }
-        .frame(minWidth: 900, minHeight: 700)
+        .frame(minWidth: Self.minSize.width, minHeight: Self.minSize.height)
         // Up into the hidden title bar, so the header shares its row with
         // the traffic lights instead of sitting under an empty strip.
         .ignoresSafeArea(.container, edges: .top)
@@ -62,39 +46,23 @@ struct MainView: View {
     }
 }
 
-// MARK: - Panels
+// MARK: - Widget switches
 
-/// Which of the main window's cards are showing. Each is one switch in the
-/// header; hiding one gives its space to the others.
-enum Panels {
-    static let library = "showLibrary"
-    /// Which EQ view shows: the response graph, the faders, or neither.
-    static let eq = "eqPanel"
-    static let response = "response"
-    static let equalizer = "faders"
-    static let hidden = "none"
-}
-
+/// The two widget switches in the header. Both can be on; each box inside a
+/// widget (lyrics, library, graph or faders) has its own control there.
 struct PanelToggles: View {
-    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.player) private var showPlayer = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
+    @AppStorage(Panels.eqLast) private var eqLast = Panels.response
 
-    /// The EQ is shown as the response graph or as faders, never both; the
-    /// button for the one showing hides it. The three sit in one capsule.
     var body: some View {
         HStack(spacing: 2) {
-            toggle("books.vertical.fill", isOn: $showLibrary, name: "Library", key: "⌘L")
-            toggle("waveform.path.ecg", isOn: choice(Panels.response), name: "Response graph", key: "⌘G")
-            toggle("slider.vertical.3", isOn: choice(Panels.equalizer), name: "Equalizer faders", key: "⌘E")
+            toggle("play.rectangle.fill", isOn: $showPlayer, name: "Player widget", key: "⌥⌘P")
+            toggle("slider.vertical.3", isOn: Panels.eqWidget($eqPanel, last: $eqLast), name: "Equalizer widget", key: "⌥⌘E")
         }
         .padding(3)
         .background(Capsule().fill(Theme.ink.opacity(0.06)))
         .overlay(Capsule().strokeBorder(Theme.ink.opacity(0.10)))
-    }
-
-    private func choice(_ value: String) -> Binding<Bool> {
-        Binding(get: { eqPanel == value },
-                set: { eqPanel = $0 ? value : Panels.hidden })
     }
 
     private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String, key: String) -> some View {
@@ -113,85 +81,25 @@ struct PanelToggles: View {
     }
 }
 
-/// Shown when every panel is switched off, so the window is not just blank.
-struct AllPanelsHidden: View {
-    @AppStorage(Panels.library) private var showLibrary = true
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "rectangle.3.group")
-                .font(.system(size: 30))
-                .foregroundStyle(Theme.ink.opacity(0.28))
-            Text("Everything is hidden")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.ink.opacity(0.75))
-            Text("Bring a panel back from the View menu or the switches in the header.")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.ink.opacity(0.45))
-            Button {
-                withAnimation(.spring(duration: 0.3)) { showLibrary = true }
-            } label: {
-                Text("Show Library")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.ink.opacity(0.9))
-                    .pill(active: true)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
 // MARK: - Header Bar
 
-/// The brand, the panel switches, the output device, the visualizer and the
-/// theme; there is no sidebar, so the panels get the full width. The window
-/// has no title bar of its own — this row is drawn up into it, which is why
-/// it starts clear of the traffic lights. It has no fill: the window's
-/// backdrop shows through.
+/// The brand, the widget switches, the output device and the theme; there is
+/// no sidebar. The window has no title bar of its own — this row is drawn up
+/// into it, which is why it starts clear of the traffic lights. It has no
+/// fill: the window's backdrop shows through. It sheds its labels as the
+/// window narrows.
 struct HeaderBar: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
     @EnvironmentObject private var presets: PresetManager
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(Panels.player) private var showPlayer = true
 
     var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 9) {
-                BrandMark()
-                HStack(spacing: 6) {
-                    Text("Zuujis").font(.system(size: 14, weight: .bold))
-                    Text("Media Player").font(.system(size: 14, weight: .regular))
-                }
-                .foregroundStyle(Theme.ink.opacity(0.92))
-                .fixedSize()
-                statusLine
-            }
-
-            Spacer(minLength: 8)
-
-            PanelToggles()
-            DeviceMenu()
-
-            Button {
-                openWindow(id: ZuujisMediaPlayerApp.visualizerWindowID)
-            } label: {
-                Label("Visualizer", systemImage: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.onSignal)
-                    .padding(.horizontal, 13)
-                    .frame(height: 30)
-                    .background(Capsule().fill(Theme.signal))
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.28)))
-                    .shadow(color: Theme.violet.opacity(0.45), radius: 8, y: 1)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Open the visualizer  (⇧⌘V)")
-
-            ThemeMenu()
-            StatusMenu()
+        ViewThatFits(in: .horizontal) {
+            row(brandText: true, compact: false)
+            row(brandText: false, compact: false)
+            row(brandText: false, compact: true)
         }
         .padding(.leading, 84)
         .padding(.trailing, 16)
@@ -200,6 +108,52 @@ struct HeaderBar: View {
             if let presetID = newID, let preset = presets.preset(withID: presetID) {
                 engine.applyPreset(preset)
             }
+        }
+    }
+
+    private func row(brandText: Bool, compact: Bool) -> some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 9) {
+                BrandMark()
+                if brandText {
+                    HStack(spacing: 6) {
+                        Text("Zuujis").font(.system(size: 14, weight: .bold))
+                        Text("Media Player").font(.system(size: 14, weight: .regular))
+                    }
+                    .foregroundStyle(Theme.ink.opacity(0.92))
+                    .fixedSize()
+                    statusLine
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            PanelToggles()
+            DeviceMenu(compact: compact)
+
+            // The player widget carries the visualizer switch; without it the
+            // header does.
+            if !showPlayer {
+                Button {
+                    openWindow(id: ZuujisMediaPlayerApp.visualizerWindowID)
+                } label: {
+                    Label("Visualizer", systemImage: "sparkles")
+                        .labelStyle(OptionalTitleLabelStyle(showsTitle: !compact))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.onSignal)
+                        .padding(.horizontal, 13)
+                        .frame(height: 30)
+                        .background(Capsule().fill(Theme.signal))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.28)))
+                        .shadow(color: Theme.violet.opacity(0.45), radius: 8, y: 1)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Open the visualizer  (⇧⌘V)")
+            }
+
+            ThemeMenu()
+            StatusMenu()
         }
     }
 

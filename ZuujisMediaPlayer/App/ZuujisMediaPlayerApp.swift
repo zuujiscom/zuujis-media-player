@@ -51,12 +51,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One main window, no tabs: this also keeps "Show Tab Bar" and
         // "Show All Tabs" out of the View menu.
         NSWindow.allowsAutomaticWindowTabbing = false
+
+        // Started by the system at login: stay in the menu bar instead of
+        // putting a window in the user's face. The window is only hidden, so
+        // the Dock icon or the menu bar item brings it straight back.
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let launchedAtLogin = event?.eventID == AEEventID(kAEOpenApplication)
+            && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == AEKeyword(keyAELaunchedAsLogInItem)
+        if launchedAtLogin {
+            DispatchQueue.main.async { NSApp.hide(nil) }
+        }
     }
+
+    /// The menu bar item keeps the player and the equalizer one click away, so
+    /// closing the window does not quit; ⌘Q (or the menu bar's Quit) does.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 @main
 struct ZuujisMediaPlayerApp: App {
-    init() { AppPaths.migrateFromOldName() }
+    init() {
+        AppPaths.migrateFromOldName()
+        // The visualizer window reports itself open; none is at launch.
+        UserDefaults.standard.set(false, forKey: Panels.visualizerOpen)
+    }
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
@@ -67,24 +85,29 @@ struct ZuujisMediaPlayerApp: App {
     @StateObject private var player = PlayerEngine()
     @StateObject private var library = LibraryStore()
     @StateObject private var playlists = PlaylistStore()
+    @StateObject private var lyrics = LyricsStore()
+    @StateObject private var login = LaunchAtLogin()
     // The View menu drives the same saved switches as the header buttons.
-    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.player) private var showPlayer = true
+    @AppStorage(Panels.library) private var showLibrary = false
+    @AppStorage(Panels.lyrics) private var showLyrics = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
+    @AppStorage(Panels.eqLast) private var eqLast = Panels.response
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: Self.mainWindowID) {
             MainView()
                 .environmentObject(player)
                 .environmentObject(player.queue)
                 .environmentObject(library)
                 .environmentObject(playlists)
+                .environmentObject(lyrics)
                 .environmentObject(audioEngine)
                 .environmentObject(audioEngine.meters)
                 .environmentObject(presetManager)
                 .environmentObject(deviceProfiles)
                 .environmentObject(milkdropLibrary)
-                .frame(minWidth: 900, minHeight: 700)
                 // After a scan, playlist songs whose files moved follow them.
                 .onChange(of: library.isScanning) { _, scanning in
                     if !scanning { playlists.relink(library: library.tracks.map(\.id)) }
@@ -92,23 +115,16 @@ struct ZuujisMediaPlayerApp: App {
                 .task {
                     #if DEBUG
                     if let gallery = DebugGallery.directory {
+                        lyrics.attach(to: player)
+                        if ProcessInfo.processInfo.environment["ZMP_GALLERY_MENUBAR"] != nil {
+                            openWindow(id: "menubar-preview")
+                        }
                         DebugGallery.run(engine: audioEngine, player: player, directory: gallery,
                                          openVisualizer: { openWindow(id: Self.visualizerWindowID) })
                         return
                     }
                     #endif
-                    player.attach(to: audioEngine)
-                    AppDelegate.openHandler = { player.openFromFinder($0) }
-                    AppDelegate.saveOnQuit = {
-                        library.saveNow()
-                        playlists.saveNow()
-                        player.queue.saveNow()
-                    }
-                    // The engine's device didSet runs during init, before this
-                    // store exists, so the launch device is applied here.
-                    guard audioEngine.deviceProfiles == nil else { return }
-                    audioEngine.deviceProfiles = deviceProfiles
-                    audioEngine.applyProfileForCurrentDevice()
+                    bootstrap()
                 }
         }
         // No title bar: `HeaderBar` is drawn up into that space instead.
@@ -134,6 +150,8 @@ struct ZuujisMediaPlayerApp: App {
                 Button("Make Default Audio Player…") {
                     DefaultPlayer.makeDefault()
                 }
+
+                Toggle("Open at Login", isOn: Binding(get: { login.isEnabled }, set: { login.set($0) }))
             }
 
             // File: what a player opens. Presets live in the Equalizer menu.
@@ -165,6 +183,15 @@ struct ZuujisMediaPlayerApp: App {
 
             // View: the system menu keeps Enter Full Screen; these go above it.
             CommandGroup(before: .toolbar) {
+                Toggle("Player Widget", isOn: $showPlayer)
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+                Toggle("Equalizer Widget", isOn: Panels.eqWidget($eqPanel, last: $eqLast))
+                    .keyboardShortcut("e", modifiers: [.command, .option])
+
+                Divider()
+
+                Toggle("Lyrics", isOn: $showLyrics)
+                    .keyboardShortcut("l", modifiers: [.command, .option])
                 Toggle("Library", isOn: $showLibrary)
                     .keyboardShortcut("l", modifiers: [.command])
                 Toggle("Response Graph", isOn: eqPanelBinding(Panels.response))
@@ -232,6 +259,24 @@ struct ZuujisMediaPlayerApp: App {
                     .keyboardShortcut(.upArrow, modifiers: [.command])
                 Button("Volume Down") { player.volume = max(0, player.volume - 0.1) }
                     .keyboardShortcut(.downArrow, modifiers: [.command])
+
+                Divider()
+
+                Menu("Speed") {
+                    ForEach(PlayerEngine.speedPresets, id: \.self) { value in
+                        Toggle(speedLabel(value), isOn: Binding(get: { abs(player.speed - value) < 0.001 },
+                                                                set: { _ in player.speed = value }))
+                    }
+                    Divider()
+                    Toggle("Keep the Pitch", isOn: $player.keepsPitch)
+                }
+                Button("Faster") { player.speed = nextSpeed(after: player.speed, up: true) }
+                    .keyboardShortcut("]", modifiers: [.command])
+                Button("Slower") { player.speed = nextSpeed(after: player.speed, up: false) }
+                    .keyboardShortcut("[", modifiers: [.command])
+                Button("Normal Speed") { player.speed = 1 }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
+                    .disabled(player.speed == 1)
 
                 Divider()
 
@@ -414,13 +459,59 @@ struct ZuujisMediaPlayerApp: App {
             }
         }
 
+        // The menu bar item: the player and the equalizer in small, always
+        // there (the app is a login item). Its icon's own task is what starts
+        // the audio side when the app was launched hidden, before any window.
+        MenuBarExtra {
+            MenuBarPlayer()
+                .environmentObject(player)
+                .environmentObject(player.queue)
+                .environmentObject(audioEngine)
+                .environmentObject(audioEngine.meters)
+                .environmentObject(presetManager)
+                .environmentObject(lyrics)
+                .environmentObject(login)
+        } label: {
+            MenuBarIcon()
+                .environmentObject(player)
+                .environmentObject(audioEngine)
+                .task {
+                    #if DEBUG
+                    if DebugGallery.directory != nil { return }
+                    #endif
+                    bootstrap()
+                }
+        }
+        .menuBarExtraStyle(.window)
+
         Window("Visualizer", id: Self.visualizerWindowID) {
             VisualizerWindow()
                 .environmentObject(player)
                 .environmentObject(audioEngine)
                 .environmentObject(milkdropLibrary)
+                .onAppear { UserDefaults.standard.set(true, forKey: Panels.visualizerOpen) }
+                .onDisappear { UserDefaults.standard.set(false, forKey: Panels.visualizerOpen) }
         }
         .defaultSize(width: 1100, height: 680)
+
+        #if DEBUG
+        // Screenshots: the menu bar window and the speed panel in an ordinary
+        // window, since a status item's window cannot be captured by id.
+        Window("Menu Bar Preview", id: "menubar-preview") {
+            HStack(alignment: .top, spacing: 0) {
+                MenuBarPlayer()
+                SpeedPanel()
+                    .background(AmbientBackground())
+            }
+            .environmentObject(player)
+            .environmentObject(player.queue)
+            .environmentObject(audioEngine)
+            .environmentObject(audioEngine.meters)
+            .environmentObject(presetManager)
+            .environmentObject(lyrics)
+            .environmentObject(login)
+        }
+        #endif
 
         Window("Queue", id: Self.playlistWindowID) {
             PlaylistView()
@@ -431,11 +522,40 @@ struct ZuujisMediaPlayerApp: App {
         .defaultSize(width: 520, height: 620)
     }
 
+    static let mainWindowID = "main"
     static let visualizerWindowID = "visualizer"
     static let playlistWindowID = "playlist"
 
+    /// Connects the player to the equalizer and the Finder, and arranges the
+    /// saves on quit. Run from the main window and from the menu bar icon,
+    /// whichever appears first (a login launch has only the icon), so it must
+    /// be safe to call twice.
+    private func bootstrap() {
+        player.attach(to: audioEngine)
+        lyrics.attach(to: player)
+        AppDelegate.openHandler = { player.openFromFinder($0) }
+        AppDelegate.saveOnQuit = {
+            library.saveNow()
+            playlists.saveNow()
+            player.queue.saveNow()
+        }
+        login.enableOnFirstRun()
+        // The engine's device didSet runs during init, before this
+        // store exists, so the launch device is applied here.
+        guard audioEngine.deviceProfiles == nil else { return }
+        audioEngine.deviceProfiles = deviceProfiles
+        audioEngine.applyProfileForCurrentDevice()
+    }
+
     private func openVisualizerWindow() {
         openWindow(id: Self.visualizerWindowID)
+    }
+
+    /// The next stop on the speed presets, up or down from `speed`.
+    private func nextSpeed(after speed: Double, up: Bool) -> Double {
+        let steps = PlayerEngine.speedPresets
+        if up { return steps.first { $0 > speed + 0.001 } ?? steps.last! }
+        return steps.last { $0 < speed - 0.001 } ?? steps.first!
     }
 
     /// The response graph and the faders are one or the other; switching the

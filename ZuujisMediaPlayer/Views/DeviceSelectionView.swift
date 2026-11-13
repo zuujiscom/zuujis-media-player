@@ -9,6 +9,8 @@ import CoreAudio
 struct DeviceMenu: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var profiles: DeviceProfileStore
+    /// Icon only, for a narrow window.
+    var compact = false
 
     var body: some View {
         Menu {
@@ -63,11 +65,13 @@ struct DeviceMenu: View {
                     ? "exclamationmark.triangle.fill"
                     : (engine.currentDeviceHasProfile && profiles.isEnabled ? "headphones.circle.fill" : "hifispeaker")
             )
+                .labelStyle(OptionalTitleLabelStyle(showsTitle: !compact))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(engine.routeErrorMessage == nil ? Theme.ink.opacity(0.85) : Theme.amber)
                 .lineLimit(1)
                 .frame(maxWidth: 220)
                 .pill(active: engine.routeErrorMessage != nil, tint: Theme.amber)
+                .help(currentOutputName)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -81,5 +85,18 @@ struct DeviceMenu: View {
             return "—"
         }
         return device.isBuiltIn ? "\(device.name)  (Built-in)" : device.name
+    }
+}
+
+/// A label with its title shown or hidden by a flag, so one label serves a
+/// full and a compact layout.
+struct OptionalTitleLabelStyle: LabelStyle {
+    var showsTitle: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            if showsTitle { configuration.title }
+        }
     }
 }

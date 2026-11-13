@@ -269,7 +269,7 @@ enum DebugGallery {
                 try? await Task.sleep(for: .seconds(2))
             }
             if let size = env["ZMP_GALLERY_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
-               let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
+               let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible && $0.canBecomeMain && $0.title != "Visualizer" }) {
                 window.setContentSize(NSSize(width: size[0], height: size[1]))
             }
             // `ZMP_GALLERY_SCREEN=left` parks the window on the leftmost display
@@ -277,7 +277,7 @@ enum DebugGallery {
             // below, shows masks, blurs and clips as they are composited).
             if env["ZMP_GALLERY_SCREEN"] == "left",
                let screen = NSScreen.screens.min(by: { $0.frame.minX < $1.frame.minX }),
-               let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
+               let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible && $0.canBecomeMain && $0.title != "Visualizer" }) {
                 window.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 40,
                                               y: screen.visibleFrame.maxY - window.frame.height - 40))
                 window.orderFrontRegardless()
@@ -286,11 +286,18 @@ enum DebugGallery {
             // The menu bar as text, so a change to the commands can be checked.
             try? menuOutline(NSApp.mainMenu).write(
                 to: directory.appendingPathComponent("menus.txt"), atomically: true, encoding: .utf8)
-            if let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible }) {
+            if let window = NSApp.windows.first(where: { $0.contentView != nil && $0.isVisible && $0.canBecomeMain && $0.title != "Visualizer" }) {
                 snapshot(window, to: directory.appendingPathComponent("main-window.png"))
                 try? "\(window.windowNumber)".write(
                     to: directory.appendingPathComponent("window-id.txt"), atomically: true, encoding: .utf8
                 )
+            }
+            if env["ZMP_GALLERY_MENUBAR"] != nil,
+               let window = NSApp.windows.first(where: { $0.title == "Menu Bar Preview" && $0.isVisible }) {
+                window.orderFrontRegardless()
+                try? await Task.sleep(for: .seconds(1))
+                try? "\(window.windowNumber)".write(
+                    to: directory.appendingPathComponent("menubar-id.txt"), atomically: true, encoding: .utf8)
             }
             if ProcessInfo.processInfo.environment["ZMP_GALLERY_HOLD"] != nil { return }
             fake?.invalidate()

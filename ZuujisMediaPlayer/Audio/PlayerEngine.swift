@@ -75,6 +75,37 @@ final class PlayerEngine: ObservableObject {
     }
     private static let volumeKey = "playerVolume"
 
+    // MARK: - Playback speed
+
+    /// The speeds offered as quick picks; the slider covers the whole range.
+    static let speedPresets: [Double] = [0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0]
+    static let speedRange: ClosedRange<Double> = 0.5...2.0
+
+    /// Playback speed, 0.5…2×. Persists. The player node's clock keeps
+    /// counting *source* frames at any speed (measured), so the position,
+    /// gapless joins and lyric sync need no correction.
+    @Published var speed: Double = {
+        let stored = UserDefaults.standard.object(forKey: "playerSpeed") as? Double ?? 1
+        return min(max(stored, PlayerEngine.speedRange.lowerBound), PlayerEngine.speedRange.upperBound)
+    }() {
+        didSet {
+            let clamped = min(max((speed * 100).rounded() / 100, Self.speedRange.lowerBound), Self.speedRange.upperBound)
+            if clamped != speed { speed = clamped; return }
+            UserDefaults.standard.set(speed, forKey: "playerSpeed")
+            applySpeed()
+            timelineChanged.send()
+        }
+    }
+
+    /// Keep the pitch when the speed changes (time-stretching). Off is the
+    /// varispeed of a turntable: faster is higher.
+    @Published var keepsPitch: Bool = UserDefaults.standard.object(forKey: "playerKeepsPitch") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(keepsPitch, forKey: "playerKeepsPitch")
+            applySpeed()
+        }
+    }
+
     let queue: PlaybackQueue
 
     /// Fires when the timeline jumps — a seek, a new track, play or pause — so
@@ -88,6 +119,10 @@ final class PlayerEngine: ObservableObject {
     private var engine = AVAudioEngine()
     private var player = AVAudioPlayerNode()
     private var eqNode = AVAudioUnitEQ(numberOfBands: EQPreset.defaultBands.count)
+    // Speed: one of the two does the work (see `applySpeed`); both are
+    // bypassed at 1× so normal playback is untouched.
+    private var timePitch = AVAudioUnitTimePitch()
+    private var varispeed = AVAudioUnitVarispeed()
 
     /// What the graph was built for. A track with a different sample rate or
     /// channel count needs a rebuild; one with the same plays gaplessly.
@@ -629,9 +664,15 @@ final class PlayerEngine: ObservableObject {
         let bandCount = equalizer?.bands.count ?? EQPreset.defaultBands.count
         let newEQ = AVAudioUnitEQ(numberOfBands: bandCount)
 
+        let newTimePitch = AVAudioUnitTimePitch()
+        let newVarispeed = AVAudioUnitVarispeed()
         newEngine.attach(newPlayer)
+        newEngine.attach(newVarispeed)
+        newEngine.attach(newTimePitch)
         newEngine.attach(newEQ)
-        newEngine.connect(newPlayer, to: newEQ, format: format)
+        newEngine.connect(newPlayer, to: newVarispeed, format: format)
+        newEngine.connect(newVarispeed, to: newTimePitch, format: format)
+        newEngine.connect(newTimePitch, to: newEQ, format: format)
         newEngine.connect(newEQ, to: newEngine.mainMixerNode, format: format)
         #if DEBUG
         // Screenshot runs play a real file for the meters; this keeps them
@@ -645,7 +686,10 @@ final class PlayerEngine: ObservableObject {
         engine = newEngine
         player = newPlayer
         eqNode = newEQ
+        timePitch = newTimePitch
+        varispeed = newVarispeed
         graphFormat = format
+        applySpeed()
         applyEQ()
         installMeterTap()
 
@@ -683,6 +727,20 @@ final class PlayerEngine: ObservableObject {
             errorMessage = "Playback failed: \(error.localizedDescription)"
             finish()
         }
+    }
+
+    // MARK: - Speed
+
+    /// Time-stretching keeps the pitch; varispeed lets it follow the speed.
+    /// Whichever is not in use is bypassed, and both are at 1×.
+    private func applySpeed() {
+        let rate = Float(speed)
+        let stretch = keepsPitch && speed != 1
+        let vary = !keepsPitch && speed != 1
+        timePitch.bypass = !stretch
+        timePitch.rate = stretch ? rate : 1
+        varispeed.bypass = !vary
+        varispeed.rate = vary ? rate : 1
     }
 
     // MARK: - EQ

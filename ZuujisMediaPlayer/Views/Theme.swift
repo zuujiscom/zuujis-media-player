@@ -93,6 +93,13 @@ extension View {
             .shadow(color: .black.opacity(Theme.palette.isLight ? 0.10 : 0.32), radius: 18, y: 8)
     }
 
+    /// `card()` only when `on`: a view that is sometimes embedded in a card
+    /// that already draws one.
+    @ViewBuilder
+    func cardIf(_ on: Bool, padding: CGFloat = 16) -> some View {
+        if on { self.card(padding: padding) } else { self }
+    }
+
     /// A small rounded control surface for the header's menus and toggles.
     func pill(active: Bool = false, tint: Color = Theme.cyan) -> some View {
         self

@@ -5,10 +5,15 @@ import SwiftUI
 
 struct BandControlsView: View {
     @EnvironmentObject private var engine: AudioEngine
-    @State private var showBandDetails = false
+    @AppStorage("eqShowBandDetails") private var showBandDetails = false
+    /// Inside `EQWidget`: it supplies the header and the preamp.
+    var embedded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if embedded {
+                embeddedBar
+            } else {
             HStack(spacing: 10) {
                 PowerButton()
                 SectionTitle(text: "Equalizer", systemImage: "slider.vertical.3")
@@ -47,6 +52,7 @@ struct BandControlsView: View {
             }
 
             PreampRow()
+            }
 
             bandRow
 
@@ -54,7 +60,39 @@ struct BandControlsView: View {
                 bandDetailsGrid
             }
         }
-        .card()
+        .cardIf(!embedded)
+    }
+
+    /// Flat and the band table, the two controls the widget header lacks.
+    private var embeddedBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                withAnimation(.spring(duration: 0.3)) { engine.resetToFlat() }
+            } label: {
+                Label("Flat", systemImage: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(isFlat ? 0.35 : 0.85))
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(Capsule().fill(Theme.ink.opacity(0.07)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(isFlat)
+            .help("Set every band to 0 dB  (⇧⌘R)")
+            Spacer()
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { showBandDetails.toggle() }
+            } label: {
+                Image(systemName: "tablecells")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(showBandDetails ? Theme.cyan : Theme.ink.opacity(0.6))
+                    .frame(width: 26, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Show every band's frequency, gain, Q and type")
+        }
     }
 
     private var isFlat: Bool {

@@ -17,6 +17,15 @@ struct LibraryView: View {
     /// With no EQ panel showing, the columns take the window's spare height
     /// instead of stopping at their usual 300 points.
     var fillsHeight = false
+    /// Inside the player widget, which supplies the card.
+    var embedded = false
+    /// The room the columns have. Below `narrowWidth` the middle column
+    /// (albums, or artists under a genre) is dropped and the songs list
+    /// shows everything under the choice that is left.
+    var availableWidth: CGFloat = 1000
+    var minColumnHeight: CGFloat = 300
+    private static let narrowWidth: CGFloat = 720
+    private var narrow: Bool { availableWidth < Self.narrowWidth }
 
     @AppStorage("libraryBrowse") private var browseRaw = Browse.artists.rawValue
     @AppStorage("libraryWriteTagsToFiles") private var writeToFiles = true
@@ -56,13 +65,15 @@ struct LibraryView: View {
                 HStack(spacing: 10) {
                     switch browse {
                     case .artists:
-                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 226)
-                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 250)
+                        column(title: "Artists", count: artists.count) { artistList }.frame(width: narrow ? min(226, availableWidth * 0.42) : 226)
+                        if !narrow { column(title: "Albums", count: albums.count) { albumList }.frame(width: 250) }
                         column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .genres:
-                        column(title: "Genres", count: genres.count) { genreList }.frame(width: 172)
-                        column(title: "Artists", count: artists.count) { artistList }.frame(width: 198)
-                        column(title: "Albums", count: albums.count) { albumList }.frame(width: 216)
+                        column(title: "Genres", count: genres.count) { genreList }.frame(width: narrow ? min(172, availableWidth * 0.34) : 172)
+                        if !narrow {
+                            column(title: "Artists", count: artists.count) { artistList }.frame(width: 198)
+                            column(title: "Albums", count: albums.count) { albumList }.frame(width: 216)
+                        }
                         column(title: "Songs", count: songs.count, selected: selection.count) { songList }
                     case .playlists:
                         column(title: "Playlists", count: playlists.playlists.count, accessory: {
@@ -78,10 +89,10 @@ struct LibraryView: View {
                 }
                 // Fixed height: each column scrolls inside it instead of the
                 // card growing to fit a long list.
-                .frame(minHeight: 300, idealHeight: 300, maxHeight: fillsHeight ? .infinity : 300)
+                .frame(minHeight: minColumnHeight, idealHeight: 300, maxHeight: fillsHeight ? .infinity : 300)
             }
         }
-        .card()
+        .cardIf(!embedded)
         .onAppear(perform: refresh)
         .onChange(of: library.tracks) { _, _ in refresh() }
         #if DEBUG
@@ -129,17 +140,19 @@ struct LibraryView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            SectionTitle(text: "Library", systemImage: "books.vertical.fill")
+            if !embedded { SectionTitle(text: "Library", systemImage: "books.vertical.fill") }
 
             SegmentedPills(options: [(Browse.artists.rawValue, "Artists"),
                                      (Browse.genres.rawValue, "Genres"),
                                      (Browse.playlists.rawValue, "Playlists")],
                            selection: $browseRaw)
 
-            Text(notice ?? status)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(notice == nil ? Theme.ink.opacity(0.45) : Theme.mint)
-                .lineLimit(1)
+            if !narrow || notice != nil {
+                Text(notice ?? status)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(notice == nil ? Theme.ink.opacity(0.45) : Theme.mint)
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 8)
 
@@ -151,7 +164,7 @@ struct LibraryView: View {
                     TextField("Search", text: $search)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
-                        .frame(width: 140)
+                        .frame(width: narrow ? 90 : 140)
                     if !search.isEmpty {
                         Button { search = "" } label: {
                             Image(systemName: "xmark.circle.fill")
@@ -183,6 +196,7 @@ struct LibraryView: View {
                 }
             } label: {
                 Label("Folders", systemImage: "folder.badge.plus")
+                    .labelStyle(OptionalTitleLabelStyle(showsTitle: !narrow))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.ink.opacity(0.85))
                     .pill()

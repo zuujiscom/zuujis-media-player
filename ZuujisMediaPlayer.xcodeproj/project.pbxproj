@@ -7,6 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B034E0BC8391A27BDC70E0F3 /* MenuBarPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EE97C1E9B9DA9A39F4D437 /* MenuBarPlayer.swift */; };
+		26E10BF39B663B04404D73E9 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C217D6C19BA06827E34A7043 /* LaunchAtLogin.swift */; };
+		A220C3FAF3990A9CE5A41896 /* SpeedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7720875FAEA740A0AF9B85D8 /* SpeedControl.swift */; };
+		C63CEE1AE03F025CD74D49D4 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB440F2680547BF527186F00 /* LyricsView.swift */; };
+		896C3F7E7181D2B50EEF74A8 /* Widgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E0743891276C438B68CF42 /* Widgets.swift */; };
+		CE21DD69E72240DEC7B39351 /* LyricsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EB7C3625A8922EF954B68D2 /* LyricsStore.swift */; };
+		94BBAA6FF83BD8F5BEDE6EE5 /* Lyrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8F5628D2EEC3CA6D82ABC0 /* Lyrics.swift */; };
 		100000000000000000000001 /* ZuujisMediaPlayerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* ZuujisMediaPlayerApp.swift */; };
 		100000000000000000000002 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* AudioEngine.swift */; };
 		100000000000000000000004 /* SpectrumAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* SpectrumAnalyzer.swift */; };
@@ -45,6 +52,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00EE97C1E9B9DA9A39F4D437 /* MenuBarPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPlayer.swift; sourceTree = "<group>"; };
+		C217D6C19BA06827E34A7043 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		7720875FAEA740A0AF9B85D8 /* SpeedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedControl.swift; sourceTree = "<group>"; };
+		FB440F2680547BF527186F00 /* LyricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsView.swift; sourceTree = "<group>"; };
+		78E0743891276C438B68CF42 /* Widgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Widgets.swift; sourceTree = "<group>"; };
+		0EB7C3625A8922EF954B68D2 /* LyricsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsStore.swift; sourceTree = "<group>"; };
+		DF8F5628D2EEC3CA6D82ABC0 /* Lyrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lyrics.swift; sourceTree = "<group>"; };
 		200000000000000000000001 /* ZuujisMediaPlayerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZuujisMediaPlayerApp.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		200000000000000000000004 /* SpectrumAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectrumAnalyzer.swift; sourceTree = "<group>"; };
@@ -121,6 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* ZuujisMediaPlayerApp.swift */,
+				C217D6C19BA06827E34A7043 /* LaunchAtLogin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -149,6 +164,7 @@
 				2000000000000000000000B1 /* LibraryModel.swift */,
 				2000000000000000000000C1 /* TagWriter.swift */,
 				2000000000000000000000D1 /* Playlist.swift */,
+				DF8F5628D2EEC3CA6D82ABC0 /* Lyrics.swift */,
 				2000000000000000000000D3 /* AppPaths.swift */,
 			);
 			path = Models;
@@ -163,6 +179,7 @@
 				200000000000000000000073 /* PlaybackQueue.swift */,
 				2000000000000000000000B2 /* LibraryStore.swift */,
 				2000000000000000000000D2 /* PlaylistStore.swift */,
+				0EB7C3625A8922EF954B68D2 /* LyricsStore.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -181,6 +198,10 @@
 				20000000000000000000000F /* PresetSectionView.swift */,
 				200000000000000000000071 /* PlayerView.swift */,
 				200000000000000000000074 /* PlaylistView.swift */,
+				00EE97C1E9B9DA9A39F4D437 /* MenuBarPlayer.swift */,
+				7720875FAEA740A0AF9B85D8 /* SpeedControl.swift */,
+				FB440F2680547BF527186F00 /* LyricsView.swift */,
+				78E0743891276C438B68CF42 /* Widgets.swift */,
 				2000000000000000000000B3 /* LibraryView.swift */,
 			);
 			path = Views;
@@ -274,6 +295,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000001 /* ZuujisMediaPlayerApp.swift in Sources */,
+				26E10BF39B663B04404D73E9 /* LaunchAtLogin.swift in Sources */,
 				100000000000000000000002 /* AudioEngine.swift in Sources */,
 				100000000000000000000004 /* SpectrumAnalyzer.swift in Sources */,
 				100000000000000000000051 /* MilkdropPreset.swift in Sources */,
@@ -298,14 +320,20 @@
 				1000000000000000000000B1 /* LibraryModel.swift in Sources */,
 				1000000000000000000000C1 /* TagWriter.swift in Sources */,
 				1000000000000000000000D1 /* Playlist.swift in Sources */,
+				94BBAA6FF83BD8F5BEDE6EE5 /* Lyrics.swift in Sources */,
 				1000000000000000000000D3 /* AppPaths.swift in Sources */,
 				1000000000000000000000D2 /* PlaylistStore.swift in Sources */,
+				CE21DD69E72240DEC7B39351 /* LyricsStore.swift in Sources */,
 				100000000000000000000030 /* VisualizerView.swift in Sources */,
 				10000000000000000000000C /* BandControlsView.swift in Sources */,
 				10000000000000000000000E /* DeviceSelectionView.swift in Sources */,
 				10000000000000000000000F /* PresetSectionView.swift in Sources */,
 				100000000000000000000071 /* PlayerView.swift in Sources */,
 				100000000000000000000074 /* PlaylistView.swift in Sources */,
+				B034E0BC8391A27BDC70E0F3 /* MenuBarPlayer.swift in Sources */,
+				A220C3FAF3990A9CE5A41896 /* SpeedControl.swift in Sources */,
+				C63CEE1AE03F025CD74D49D4 /* LyricsView.swift in Sources */,
+				896C3F7E7181D2B50EEF74A8 /* Widgets.swift in Sources */,
 				1000000000000000000000B3 /* LibraryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
