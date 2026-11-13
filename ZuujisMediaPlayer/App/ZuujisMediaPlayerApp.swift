@@ -216,8 +216,6 @@ struct ZuujisMediaPlayerApp: App {
 
                 Divider()
 
-                SettingsLink { Text("Arrange Window and Widgets…") }
-
                 Picker("Theme", selection: $themeID) {
                     ForEach(ThemePalette.all) { palette in
                         Text(palette.name).tag(palette.id)
