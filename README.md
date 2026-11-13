@@ -51,6 +51,8 @@ background service. The app only runs while you have it open.
 - **The app itself**, wherever you put it (usually `/Applications`).
 - **Your presets, device profiles and imported MilkDrop presets** in
   `~/Library/Application Support/AudioEqualizer/`.
+- **Your music library** (the folders you added and the tags read from them)
+  in `library.json` in the same folder. Your music files stay where they are.
 - **Its settings** (master gain, visualizer choices, whether device profiles
   are on) in its preferences file,
   `~/Library/Preferences/com.zuujis.AudioEqualizer.plist`.
@@ -130,6 +132,34 @@ system route, so it never processes your other audio twice.
   the output device for itself while it plays, so nothing mixes into the stream.
   Every other app is silent until playback stops, and it is off by default. It
   is released when the system EQ starts.
+
+### Library
+
+The **Library** card browses your music by artist, album and song. Add folders
+with **Add Music Folder…** (or **Folders** in the card); folders on external
+drives work too, and stay listed, marked offline, while the drive is unplugged.
+
+- The first scan reads every file's tags (FLAC tags are read directly, since
+  macOS ignores them). Later launches re-read only files that are new or have
+  changed.
+- Click an artist, then an album. Double-click a song to play it with the
+  songs around it as the playlist. Right-click for **Play**, **Play Album**
+  and **Add to Playlist**. The search box matches title, artist, album and
+  genre.
+- The three buttons at the top right of the header show or hide the Library,
+  the Response graph and the Equalizer faders.
+
+**Editing tags.** Right-click a song, album or artist and choose **Edit Info…**
+to change title, artist, album, genre, year, track and disc. On an album or
+artist the change applies to every song in it, and only the fields you edit
+are touched. With **Write changes into the audio files** on (the default),
+FLAC and MP3 files are updated, so other apps see the changes; the audio
+itself is not touched. Other formats, and any file that cannot be written
+(read-only or unplugged drive), keep the change in the library only, and an
+alert says which. Turn the toggle off to keep every edit in the library only;
+**Revert Library Edits** undoes those. The playlist shows a file's tags as
+they were when it was loaded, so it may lag an edit until the song is reloaded.
+Try it on a copy first if the files matter.
 
 ### Visualizer
 
