@@ -78,20 +78,34 @@ enum LibraryModel {
         var id: String { name }
     }
 
-    /// Genres in the library, A to Z, with songs that have none grouped last.
-    static func genres(_ tracks: [LibraryTrack]) -> [Genre] {
-        Dictionary(grouping: tracks, by: \.genreName)
-            .map { Genre(name: $0.key, trackCount: $0.value.count) }
-            .sorted { a, b in
-                if (a.name == unknownGenre) != (b.name == unknownGenre) { return b.name == unknownGenre }
-                return ordered(a.name, b.name)
-            }
+    /// Spellings of one genre ("Rock", "rock", "Rock ") share a key.
+    static func genreKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
-    /// The songs in `genre`, or all of them when it is nil.
+    /// Genres in the library, A to Z, with songs that have none grouped last.
+    /// Spellings that differ only in case or surrounding spaces are one genre,
+    /// shown under the spelling most songs use.
+    static func genres(_ tracks: [LibraryTrack]) -> [Genre] {
+        Dictionary(grouping: tracks, by: { genreKey($0.genreName) }).values.map { group in
+            let spellings = Dictionary(grouping: group, by: { $0.genreName.trimmingCharacters(in: .whitespacesAndNewlines) })
+            let name = spellings.max { a, b in
+                a.value.count != b.value.count ? a.value.count < b.value.count : a.key > b.key
+            }?.key ?? unknownGenre
+            return Genre(name: name, trackCount: group.count)
+        }
+        .sorted { a, b in
+            if (a.name == unknownGenre) != (b.name == unknownGenre) { return b.name == unknownGenre }
+            return ordered(a.name, b.name)
+        }
+    }
+
+    /// The songs in `genre` (any spelling of it), or all of them when it is nil.
     static func songs(_ tracks: [LibraryTrack], inGenre genre: String?) -> [LibraryTrack] {
         guard let genre else { return tracks }
-        return tracks.filter { $0.genreName == genre }
+        let key = genreKey(genre)
+        return tracks.filter { genreKey($0.genreName) == key }
     }
 
     /// Everything `AVAudioFile` decodes natively.

@@ -70,4 +70,16 @@ final class PlaylistTests: XCTestCase {
         XCTAssertEqual(LibraryModel.songs(tracks, inGenre: LibraryModel.unknownGenre).count, 1)
         XCTAssertEqual(LibraryModel.songs(tracks, inGenre: nil).count, 4)
     }
+
+    func testGenreSpellingsMerge() {
+        func t(_ n: String, _ g: String?) -> LibraryTrack {
+            LibraryTrack(url: URL(fileURLWithPath: "/m/\(n).flac"), title: n, genre: g,
+                         size: 1, modified: Date(timeIntervalSince1970: 0))
+        }
+        let tracks = [t("1", "Rock"), t("2", "Rock "), t("3", "rock"), t("4", "Rock"), t("5", "Pop")]
+        let genres = LibraryModel.genres(tracks)
+        XCTAssertEqual(genres.map(\.name), ["Pop", "Rock"])
+        XCTAssertEqual(genres[1].trackCount, 4)
+        XCTAssertEqual(LibraryModel.songs(tracks, inGenre: "Rock").count, 4)
+    }
 }

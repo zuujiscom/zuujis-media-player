@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// AppKit re-adds View and Help after SwiftUI builds the menu bar, so
 /// `CommandGroup(replacing:)` cannot remove them — they have to be pulled off
@@ -13,6 +14,25 @@ import SwiftUI
 /// notification, guarded by an item count so the common case is one compare.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var strippedItemCount = -1
+
+    /// Where files opened from Finder (double-click, Open With, drop on the
+    /// Dock icon) go. Set once the player exists; files that arrive earlier
+    /// (launching by double-clicking a song) wait in `pendingOpens`.
+    static var openHandler: (([URL]) -> Void)? {
+        didSet {
+            guard let handler = openHandler, !pendingOpens.isEmpty else { return }
+            let urls = pendingOpens
+            pendingOpens = []
+            handler(urls)
+        }
+    }
+    private static var pendingOpens: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        if let handler = Self.openHandler { handler(files) } else { Self.pendingOpens += files }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenus()
@@ -71,6 +91,7 @@ struct AudioEqualizerApp: App {
                     }
                     #endif
                     player.attach(to: audioEngine)
+                    AppDelegate.openHandler = { player.open($0) }
                     // The engine's device didSet runs during init, before this
                     // store exists, so the launch device is applied here.
                     guard audioEngine.deviceProfiles == nil else { return }
@@ -81,6 +102,8 @@ struct AudioEqualizerApp: App {
         // No title bar: `HeaderBar` is drawn up into that space instead.
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1040, height: 790)
+        // Files opened from Finder reuse this window instead of making new ones.
+        .handlesExternalEvents(matching: ["*"])
         .commands {
             // File: an EQ has no documents and no second window, so the
             // stock New/Open items are replaced with preset I/O.
@@ -180,6 +203,10 @@ struct AudioEqualizerApp: App {
                     PlayerActions.addToPlaylist(in: player)
                 }
                 .keyboardShortcut("o", modifiers: [.command, .option])
+
+                Button("Make AE2 the Default Player…") {
+                    DefaultPlayer.makeDefault()
+                }
 
                 Button("Show Queue") {
                     openWindow(id: Self.playlistWindowID)
@@ -378,4 +405,37 @@ struct AudioEqualizerApp: App {
 private func shortcut(for index: Int) -> KeyEquivalent {
     let digits: [KeyEquivalent] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     return index < digits.count ? digits[index] : .init("\0")
+}
+
+
+/// Makes AE2 the app Finder opens sound files with. Runs only when the user
+/// chooses the menu item; macOS may ask them to confirm.
+enum DefaultPlayer {
+    static let identifiers = [
+        "org.xiph.flac", "public.mp3", "com.apple.m4a-audio", "com.microsoft.waveform-audio",
+        "public.aiff-audio", "public.aifc-audio", "com.apple.coreaudio-format", "public.aac-audio",
+    ]
+
+    @MainActor
+    static func makeDefault() {
+        let types = identifiers.compactMap { UTType($0) }
+        let appURL = Bundle.main.bundleURL
+        Task { @MainActor in
+            var failed: [String] = []
+            for type in types {
+                do { try await NSWorkspace.shared.setDefaultApplication(at: appURL, toOpen: type) }
+                catch { failed.append(type.localizedDescription ?? type.identifier) }
+            }
+            let alert = NSAlert()
+            if failed.isEmpty {
+                alert.messageText = "AE2 is now the default player"
+                alert.informativeText = "Double-clicking a FLAC, MP3, M4A, WAV, AIFF or AAC file opens it in AE2."
+            } else {
+                alert.messageText = "Could not change some file types"
+                alert.informativeText = "Not changed: " + failed.joined(separator: ", ")
+                    + ". You can set them in Finder: Get Info, Open with, Change All."
+            }
+            alert.runModal()
+        }
+    }
 }

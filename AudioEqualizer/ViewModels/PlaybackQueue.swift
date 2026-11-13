@@ -334,7 +334,7 @@ struct TrackMetadata: Sendable {
             // Album artist first: it keeps a compilation's tracks on one album.
             meta.artist = tags["ALBUMARTIST"] ?? tags["ALBUM ARTIST"] ?? tags["ALBUM_ARTIST"] ?? tags["ARTIST"]
             meta.album = tags["ALBUM"]
-            meta.genre = tags["GENRE"]
+            meta.genre = tags["GENRE"]?.trimmingCharacters(in: .whitespacesAndNewlines)
             meta.trackNumber = LibraryModel.leadingNumber(tags["TRACKNUMBER"] ?? tags["TRACK"])
             meta.discNumber = LibraryModel.leadingNumber(tags["DISCNUMBER"] ?? tags["DISC"])
             meta.year = LibraryModel.year(from: tags["DATE"] ?? tags["YEAR"])

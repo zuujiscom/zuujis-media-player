@@ -117,6 +117,9 @@ shape it, and the **power button switches the EQ on and off**, so with the
 engine off the player plays flat. It uses its own audio path, separate from the
 system route, so it never processes your other audio twice.
 
+- **Player → Make AE2 the Default Player…** makes Finder open FLAC, MP3, M4A,
+  WAV, AIFF and AAC files in AE2 (macOS may ask you to confirm). A file opened
+  from Finder replaces the queue and plays.
 - **Player → Open Audio Files or Folder…** (⇧⌘O) replaces the queue and
   plays; **Add to Queue…** (⌥⌘O) appends. **Show Queue** is ⇧⌘L.
 - Keys: **Space** play/pause (main window), **⌘→ / ⌘←** next and previous,
@@ -150,7 +153,8 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   **Add to Playlist**, **Edit Info…** and **Set Genre**. The search box matches
   title, artist, album and genre.
 - **Genres** view: pick a genre to narrow the artists, albums and songs to it.
-  Songs with no genre are grouped last as *No Genre*. Right-click a genre to
+  Songs with no genre are grouped last as *No Genre*. Spellings that differ
+  only in case or spaces count as one genre. Right-click a genre to
   rename it for all its songs. The first launch after this was added re-reads
   every file's tags once to fill genres in.
 - The buttons in the header show or hide the Library and choose the EQ view.
