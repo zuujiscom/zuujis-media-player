@@ -149,27 +149,13 @@ struct HeaderBar: View {
         }
     }
 
+    /// Only a route error shows; the on/off state is the power button's job.
     @ViewBuilder
     private var statusLine: some View {
         if let error = engine.routeErrorMessage {
             Text(error)
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.amber)
-                .lineLimit(1)
-        } else if engine.isRunning {
-            HStack(spacing: 5) {
-                Circle().fill(engine.isBypassed ? Theme.amber : Theme.mint).frame(width: 6, height: 6)
-                Text(engine.isBypassed ? "Bypassed" : "Live")
-                    .foregroundStyle(engine.isBypassed ? Theme.amber : Theme.mint)
-                Text("· \(engine.outputFormat)")
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-            .font(.system(size: 10.5, weight: .medium))
-            .lineLimit(1)
-        } else {
-            Text("Off — system audio is untouched")
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.45))
                 .lineLimit(1)
         }
     }

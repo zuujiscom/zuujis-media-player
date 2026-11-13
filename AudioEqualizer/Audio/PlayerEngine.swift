@@ -218,7 +218,7 @@ final class PlayerEngine: ObservableObject {
             equalizer.$masterGain.map { _ in () },
             equalizer.$isRunning.map { _ in () }
         )
-        .receive(on: RunLoop.main)
+        .receive(on: DispatchQueue.main)
         .sink { [weak self] in
             MainActor.assumeIsolated { self?.applyEQ() }
         }
@@ -227,7 +227,7 @@ final class PlayerEngine: ObservableObject {
         // The system route needs the device too: let go of an exclusive hold
         // the moment it starts, or its aggregate device could not use it.
         equalizer.$isRunning
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] running in
                 MainActor.assumeIsolated { if running { self?.releaseExclusive() } }
             }
@@ -240,7 +240,7 @@ final class PlayerEngine: ObservableObject {
             queue.$shuffle.map { _ in () },
             queue.$repeatMode.map { _ in () }
         )
-        .receive(on: RunLoop.main)
+        .receive(on: DispatchQueue.main)
         .sink { [weak self] in
             MainActor.assumeIsolated { self?.reconcileWithQueue() }
         }
