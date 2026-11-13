@@ -1,0 +1,1 @@
+../../../AudioEqualizer/Models/EQBand.swift
