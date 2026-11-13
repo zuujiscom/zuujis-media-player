@@ -10,6 +10,7 @@ struct PlayerBar: View {
     @EnvironmentObject private var player: PlayerEngine
 
     @EnvironmentObject private var queue: PlaybackQueue
+    @EnvironmentObject private var playlists: PlaylistStore
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -95,10 +96,22 @@ struct PlayerBar: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 if let track = player.track {
-                    Text(track.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(track.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        let on = playlists.isFavorite(track.url.path)
+                        Button {
+                            playlists.toggleFavorite(track.url.path)
+                        } label: {
+                            Image(systemName: on ? "heart.fill" : "heart")
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(on ? Theme.pink : Theme.ink.opacity(0.35))
+                        }
+                        .buttonStyle(.plain)
+                        .help(on ? "Remove from Favorites" : "Add to Favorites  (⌘D)")
+                    }
                     Text(track.artist ?? track.album ?? " ")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.ink.opacity(0.55))

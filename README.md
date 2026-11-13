@@ -175,6 +175,12 @@ Inside a playlist, drag songs to reorder or use **Move Up / Move Down**, and
 song whose drive is unplugged keeps its place, marked *File not found*. The
 **Queue** window's **Save** button turns the current queue into a playlist.
 
+**Favorites.** Click the heart on a song (in the Library or the player bar),
+right-click it and choose **Add to Favorites**, or press **⌘D** for the song
+that is playing. Hearted songs go into a **Favorites** playlist that is always
+the first one in the Playlists view; it can be played, queued and reordered
+like any playlist, but not renamed or deleted.
+
 **Editing tags.** Right-click a song, album or artist and choose **Edit Info…** (or **Set Genre**
 for just the genre)
 to change title, artist, album, genre, year, track and disc. On an album or

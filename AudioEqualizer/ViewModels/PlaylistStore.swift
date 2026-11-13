@@ -7,6 +7,12 @@ import Combine
 @MainActor
 final class PlaylistStore: ObservableObject {
     @Published private(set) var playlists: [Playlist] = []
+    /// Paths in Favorites, for fast heart lookups.
+    @Published private(set) var favoritePaths: Set<String> = []
+
+    /// Favorites is an ordinary playlist with a fixed id: it always exists,
+    /// sorts first, and cannot be renamed or deleted.
+    static let favoritesID = UUID(uuidString: "FA0E17E5-0000-4000-8000-00000000F4B5")!
     let fileURL: URL
     private var saveTask: Task<Void, Never>?
 
@@ -23,6 +29,27 @@ final class PlaylistStore: ObservableObject {
            let saved = try? JSONDecoder().decode([Playlist].self, from: data) {
             playlists = saved
         }
+        if !playlists.contains(where: { $0.id == Self.favoritesID }) {
+            playlists.insert(Playlist(id: Self.favoritesID, name: "Favorites"), at: 0)
+        }
+        refreshFavorites()
+    }
+
+    func isFavorite(_ path: String) -> Bool { favoritePaths.contains(path) }
+
+    /// Hearts or un-hearts a song. Returns the new state.
+    @discardableResult
+    func toggleFavorite(_ path: String) -> Bool {
+        if favoritePaths.contains(path) {
+            remove([path], from: Self.favoritesID)
+            return false
+        }
+        add([path], to: Self.favoritesID)
+        return true
+    }
+
+    private func refreshFavorites() {
+        favoritePaths = Set(playlist(Self.favoritesID)?.paths ?? [])
     }
 
     func playlist(_ id: UUID?) -> Playlist? {
@@ -40,12 +67,13 @@ final class PlaylistStore: ObservableObject {
     }
 
     func rename(_ id: UUID, to name: String) {
-        guard let i = playlists.firstIndex(where: { $0.id == id }) else { return }
+        guard id != Self.favoritesID, let i = playlists.firstIndex(where: { $0.id == id }) else { return }
         playlists[i].name = Playlist.uniqueName(name, among: playlists, excluding: id)
         changed()
     }
 
     func delete(_ id: UUID) {
+        guard id != Self.favoritesID else { return }
         playlists.removeAll { $0.id == id }
         changed()
     }
@@ -78,6 +106,7 @@ final class PlaylistStore: ObservableObject {
     }
 
     private func changed() {
+        refreshFavorites()
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)

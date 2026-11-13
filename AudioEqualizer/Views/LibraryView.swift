@@ -348,6 +348,7 @@ struct LibraryView: View {
                         .frame(height: artist == nil || album == nil ? nil : 0)
                 }
                 Spacer(minLength: 6)
+                heart(song.id)
                 Text(Self.time(song.duration))
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                     .foregroundStyle(Theme.ink.opacity(0.4))
@@ -360,6 +361,9 @@ struct LibraryView: View {
             .draggable(Self.dragPrefix + song.id)
             .contextMenu {
                 Button("Play") { player.play(urls: songs.map(\.url), startingAt: index) }
+                Button(playlists.isFavorite(song.id) ? "Remove from Favorites" : "Add to Favorites") {
+                    playlists.toggleFavorite(song.id)
+                }
                 Button("Add to Queue") { player.enqueue([song.url]) }
                 addToPlaylistMenu(suggestion: song.title) { [song] }
                 Divider()
@@ -385,7 +389,8 @@ struct LibraryView: View {
                     .padding(8)
             }
             ForEach(playlists.playlists) { list in
-                row(list.name, detail: "\(list.paths.count)", selected: playlistID == list.id) { playlistID = list.id }
+                row(list.id == PlaylistStore.favoritesID ? "♥ " + list.name : list.name,
+                    detail: "\(list.paths.count)", selected: playlistID == list.id) { playlistID = list.id }
                     .dropDestination(for: String.self) { items, _ in
                         let paths = items.compactMap(Self.path(fromDrag:))
                         guard !paths.isEmpty else { return false }
@@ -399,15 +404,19 @@ struct LibraryView: View {
                         Button("Add to Queue") { player.enqueue(urls) }
                             .disabled(urls.isEmpty)
                         Divider()
-                        Button("Rename…") {
-                            namePrompt = NamePrompt(title: "Rename Playlist", message: nil, initial: list.name,
-                                                    confirm: "Rename") { playlists.rename(list.id, to: $0) }
+                        if list.id != PlaylistStore.favoritesID {
+                            Button("Rename…") {
+                                namePrompt = NamePrompt(title: "Rename Playlist", message: nil, initial: list.name,
+                                                        confirm: "Rename") { playlists.rename(list.id, to: $0) }
+                            }
                         }
                         Button("Duplicate") {
                             playlistID = playlists.create(name: list.name + " copy", paths: list.paths).id
                         }
-                        Divider()
-                        Button("Delete Playlist…", role: .destructive) { deleting = list }
+                        if list.id != PlaylistStore.favoritesID {
+                            Divider()
+                            Button("Delete Playlist…", role: .destructive) { deleting = list }
+                        }
                     }
             }
         }
@@ -462,6 +471,7 @@ struct LibraryView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 6)
+            heart(path)
             Text(Self.time(track?.duration))
                 .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(Theme.ink.opacity(0.4))
@@ -493,6 +503,9 @@ struct LibraryView: View {
             .disabled(!exists)
             Button("Add to Queue") { player.enqueue([URL(fileURLWithPath: path)]) }
                 .disabled(!exists)
+            Button(playlists.isFavorite(path) ? "Remove from Favorites" : "Add to Favorites") {
+                playlists.toggleFavorite(path)
+            }
             Divider()
             Button("Move Up") { playlists.nudge(path, by: -1, in: list.id) }.disabled(index == 0)
             Button("Move Down") { playlists.nudge(path, by: 1, in: list.id) }.disabled(index == list.paths.count - 1)
@@ -503,6 +516,20 @@ struct LibraryView: View {
             Divider()
             Button("Remove from Playlist", role: .destructive) { playlists.remove([path], from: list.id) }
         }
+    }
+
+    /// The heart on a song row: filled when the song is a favorite.
+    private func heart(_ path: String) -> some View {
+        let on = playlists.isFavorite(path)
+        return Button {
+            playlists.toggleFavorite(path)
+        } label: {
+            Image(systemName: on ? "heart.fill" : "heart")
+                .font(.system(size: 10.5))
+                .foregroundStyle(on ? Theme.pink : Theme.ink.opacity(0.25))
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Remove from Favorites" : "Add to Favorites")
     }
 
     private static func path(fromDrag item: String) -> String? {

@@ -204,6 +204,13 @@ struct AudioEqualizerApp: App {
                 }
                 .keyboardShortcut("o", modifiers: [.command, .option])
 
+                Button(player.track.map { playlists.isFavorite($0.url.path) } == true
+                       ? "Remove Current Song from Favorites" : "Add Current Song to Favorites") {
+                    if let track = player.track { playlists.toggleFavorite(track.url.path) }
+                }
+                .keyboardShortcut("d", modifiers: [.command])
+                .disabled(player.track == nil)
+
                 Button("Make AE2 the Default Player…") {
                     DefaultPlayer.makeDefault()
                 }

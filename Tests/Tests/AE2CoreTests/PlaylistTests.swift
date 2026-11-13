@@ -82,4 +82,22 @@ final class PlaylistTests: XCTestCase {
         XCTAssertEqual(genres[1].trackCount, 4)
         XCTAssertEqual(LibraryModel.songs(tracks, inGenre: "Rock").count, 4)
     }
+
+    @MainActor
+    func testFavoritesPlaylistAlwaysExistsAndToggles() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("fav-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = PlaylistStore(fileURL: url)
+        XCTAssertEqual(store.playlists.first?.id, PlaylistStore.favoritesID)
+        XCTAssertFalse(store.isFavorite("/m/a.flac"))
+        XCTAssertTrue(store.toggleFavorite("/m/a.flac"))
+        XCTAssertTrue(store.isFavorite("/m/a.flac"))
+        XCTAssertEqual(store.playlist(PlaylistStore.favoritesID)?.paths, ["/m/a.flac"])
+        store.rename(PlaylistStore.favoritesID, to: "Nope")
+        store.delete(PlaylistStore.favoritesID)
+        XCTAssertEqual(store.playlist(PlaylistStore.favoritesID)?.name, "Favorites")
+        XCTAssertEqual(store.create(name: "Favorites").name, "Favorites 2")
+        XCTAssertFalse(store.toggleFavorite("/m/a.flac"))
+        XCTAssertFalse(store.isFavorite("/m/a.flac"))
+    }
 }
