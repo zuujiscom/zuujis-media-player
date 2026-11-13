@@ -17,14 +17,12 @@ struct LibraryView: View {
     /// With no EQ panel showing, the columns take the window's spare height
     /// instead of stopping at their usual 300 points.
     var fillsHeight = false
-    /// Inside the player widget, which supplies the card.
-    var embedded = false
     /// The room the columns have. Below `narrowWidth` the middle column
     /// (albums, or artists under a genre) is dropped and the songs list
     /// shows everything under the choice that is left.
     var availableWidth: CGFloat = 1000
     var minColumnHeight: CGFloat = 300
-    private static let narrowWidth: CGFloat = 720
+    private static let narrowWidth: CGFloat = 820
     private var narrow: Bool { availableWidth < Self.narrowWidth }
 
     @AppStorage("libraryBrowse") private var browseRaw = Browse.artists.rawValue
@@ -92,7 +90,7 @@ struct LibraryView: View {
                 .frame(minHeight: minColumnHeight, idealHeight: 300, maxHeight: fillsHeight ? .infinity : 300)
             }
         }
-        .cardIf(!embedded)
+        .card()
         .onAppear(perform: refresh)
         .onChange(of: library.tracks) { _, _ in refresh() }
         #if DEBUG
@@ -140,7 +138,7 @@ struct LibraryView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            if !embedded { SectionTitle(text: "Library", systemImage: "books.vertical.fill") }
+            SectionTitle(text: "Library", systemImage: "books.vertical.fill")
 
             SegmentedPills(options: [(Browse.artists.rawValue, "Artists"),
                                      (Browse.genres.rawValue, "Genres"),

@@ -2,6 +2,31 @@
 
 import SwiftUI
 
+/// The lyrics section of the main window: a card around the box.
+struct LyricsCard: View {
+    @EnvironmentObject private var store: LyricsStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionTitle(text: "Lyrics", systemImage: "quote.bubble")
+                Spacer()
+                if let lyrics = store.lyrics {
+                    Text(lyrics.isSynced ? "SYNCED" : "TEXT")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(1.2)
+                        .foregroundStyle(lyrics.isSynced ? Theme.mint : Theme.ink.opacity(0.5))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill((lyrics.isSynced ? Theme.mint : Theme.ink).opacity(0.12)))
+                }
+            }
+            LyricsBox(showsBadge: false)
+        }
+        .card()
+    }
+}
+
 /// The lyrics box. Synced lyrics follow the song: the line being sung is large
 /// and lit in the signal colours, the lines around it fade with distance, and
 /// the list scrolls to keep it in view through seeks, speed changes and the
@@ -10,6 +35,8 @@ import SwiftUI
 struct LyricsBox: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var store: LyricsStore
+    /// The corner badge; the main window's card shows it in its header instead.
+    var showsBadge = true
     @State private var current: Int?
     @State private var userScrolledAt = Date.distantPast
 
@@ -25,7 +52,7 @@ struct LyricsBox: View {
         .background(Theme.well.opacity(Theme.palette.isLight ? 0.9 : 0.55))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-        .overlay(alignment: .topTrailing) { badge }
+        .overlay(alignment: .topTrailing) { if showsBadge { badge } }
         .onAppear(perform: update)
         .onChange(of: store.lyrics) { _, _ in current = nil; update() }
         .onReceive(player.timelineChanged) { update() }
@@ -74,10 +101,19 @@ struct LyricsBox: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.ink.opacity(0.7))
             if player.track != nil, !store.isLoading {
-                Text("Put a .lrc file next to the song with the same name,\nor embed lyrics in its tags.")
+                Text(store.onlineMessage ?? "Put a .lrc file next to the song with the same name,\nor embed lyrics in its tags.")
                     .font(.system(size: 11))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Theme.ink.opacity(0.42))
+                Button { store.lookUpNow() } label: {
+                    Label("Look up online", systemImage: "network")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Theme.ink.opacity(0.85))
+                        .pill()
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .help("Ask lrclib.net for this song's lyrics. Sends its title, artist, album and length.")
             }
         }
         .padding(16)
@@ -155,7 +191,7 @@ private struct LyricRow: View {
 
     var body: some View {
         let active = distance == 0
-        let size = min(26, max(17, width / 15))
+        let size = min(26, max(15, width / 17))
         let near = abs(distance)
         let text = line.text.isEmpty ? "♪" : line.text
 

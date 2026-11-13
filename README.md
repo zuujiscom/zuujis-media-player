@@ -5,19 +5,15 @@ visualizer. The equalizer shapes and boosts whatever your Mac is playing
 (music, videos, games, calls) on whichever output you are using, with no
 virtual audio driver to install.
 
-![Zuujis Media Player with both widgets open: the player, with synced lyrics following the song, beside the equalizer's response curve drawn over the live spectrum.](docs/screenshot.webp)
+![Zuujis Media Player: the Now Playing stage on top, the library with synced lyrics beside it, and the equalizer's response curve drawn over the live spectrum.](docs/screenshot.webp)
 
 <p>
-<img src="docs/lyrics.webp" width="49%" alt="The player widget alone: a large cover and the controls beside full-height synced lyrics, the current line lit.">
-<img src="docs/equalizer.webp" width="49%" alt="The player's library box open beside the equalizer widget showing its faders.">
+<img src="docs/lyrics.webp" width="49%" alt="The lyrics card beside the equalizer's faders, the current line lit.">
+<img src="docs/playlists.webp" width="49%" alt="The Playlists view of the library, with Favorites open.">
 </p>
 
 <p>
-<img src="docs/playlists.webp" width="49%" alt="The Playlists view inside the player widget, with Favorites open.">
-<img src="docs/responsive.webp" width="49%" alt="A narrow window: the player widget stacked above the equalizer widget.">
-</p>
-
-<p>
+<img src="docs/responsive.webp" width="30%" alt="A narrow window: the player stacked, then the lyrics, then the equalizer.">
 <img src="docs/menubar.webp" width="30%" alt="The menu bar window: now playing, transport, the current lyric, and the equalizer's power, presets and preamp.">
 <img src="docs/speed.webp" width="23%" alt="The speed panel: 0.5x to 2x, a slider, and a Keep the pitch switch.">
 </p>
@@ -35,14 +31,15 @@ virtual audio driver to install.
 - **A response graph** that draws the EQ's curve over the live spectrum. Drag
   across it to draw the curve you want; double-click a band to reset it.
 - **Bypass** (⌘B) to compare the sound with and without the EQ.
-- **Two widgets that work together or alone**: a **player** (controls, an
-  expandable library, lyrics, a visualizer pop-out switch) and an
-  **equalizer** (power, presets, preamp, response graph or faders). Both can be
-  on at once; the layout follows the window's width *and* height, from a wide
-  side-by-side view down to a small stacked one.
+- **A responsive main window**: the Now Playing stage, the library, a lyrics
+  card and the equalizer rearrange themselves to the window's width *and*
+  height, from a wide window with lyrics beside the library down to a narrow
+  single column.
 - **Synced lyrics** that follow the song, line by line, from a `.lrc` file
   beside it or from the file's own tags. Toggle them with one click.
 - **Playback speed from 0.5× to 2×**, with or without keeping the pitch.
+- **Desktop widgets** (Now Playing and Equalizer, each in three sizes) with
+  working play, skip, power, bypass, preset, tone and preamp buttons.
 - **A menu bar item** with the player, the current lyric and the equalizer's
   controls, and **Open at Login** so it is always there.
 - **A built-in file player** for lossless audio (FLAC, ALAC, WAV, AIFF) and
@@ -144,31 +141,30 @@ back that device's saved curve.
 - Presets live in `~/Library/Application Support/Zuujis Media Player/`. Use
   **Equalizer → Reveal Presets File in Finder** to get there.
 
-### Widgets and layout
+### Layout
 
-The window is made of two widgets. The **player** holds what is playing, the
-transport and scrubber, speed, volume, a lyrics box and a library box. The
-**equalizer** holds the power button, presets, Bypass, the preamp, the
-10/15/31 band choice and either the response graph or the faders. The two
-switches in the header (or **View → Player Widget** ⌥⌘P and **Equalizer
-Widget** ⌥⌘E) turn each on or off, and **both can be on at the same time**.
+The window is the **Now Playing stage** (cover, transport, scrubber, speed,
+volume) over three cards: the **Library**, **Lyrics** and the **Equalizer**
+(response graph or faders). The four switches in the header (or the **View**
+menu: ⌘L library, ⌥⌘L lyrics, ⌘G graph, ⌘E faders) turn them on and off, and
+the others take the space.
 
-The layout follows the window, in both directions:
+It follows the window in both directions:
 
-- **Wide windows** put the widgets side by side. Each keeps a minimum width
-  (the player needs more with the library open), so when the window is too
-  narrow for both they **stack**, and the window scrolls if they no longer fit
-  in its height.
-- **One widget alone** takes the whole window. The player with lyrics on and
-  room to spare goes to two columns, the song on the left and the lyrics full
-  height beside it. With nothing else open it shows a large cover. In a very
-  short window it keeps just the song and the controls.
-- The header sheds its labels as the window narrows. The smallest window is
-  560 × 440.
+- **Wide** (about 1080 pt and up): the lyrics card sits beside the library, or
+  beside the equalizer when the library is off.
+- **Narrower:** the cards stack, lyrics under the library; the library drops
+  its middle column below about 820 pt and the equalizer's header folds to two
+  lines.
+- **The Now Playing stage** goes from one row (900 pt and up) to a song row over
+  a controls row, to a single column in a narrow window, and shrinks its cover
+  when the window is short.
+- The window scrolls once the cards' minimums outgrow its height. The smallest
+  size is 620 × 460.
 
 ### Player
 
-The player widget plays audio files through the same EQ. It shows the song's
+The player plays audio files through the same EQ. It shows the song's
 cover (embedded art, including a FLAC's, or a `cover.jpg` or `folder.jpg`
 beside the file), and the window takes on the cover's colours. It follows the
 same controls as everything else: the faders, presets, master gain and Bypass
@@ -196,13 +192,12 @@ system route, so it never processes your other audio twice.
   it plays, so nothing mixes into the stream.
   Every other app is silent until playback stops, and it is off by default. It
   is released when the system EQ starts.
-- The **Visualizer** chip pops the visualizer out into its own window and
-  lights while it is open; click it again to close it (⇧⌘V does the same from
-  the menu).
+- The **Visualizer** button in the header opens the visualizer in its own
+  window (⇧⌘V).
 
 ### Speed
 
-The speed button beside the transport shows the current speed (1× normally,
+The speed button beside the volume shows the current speed (1× normally,
 amber otherwise) and opens a panel with quick picks (0.5×, 0.75×, 0.9×, 1×,
 1.1×, 1.25×, 1.5×, 2×) and a slider for everything between. **Keep the
 pitch** time-stretches the audio so voices keep their sound; with it off,
@@ -214,8 +209,8 @@ normal playback is untouched.
 
 ### Lyrics
 
-The **Lyrics** chip (⌥⌘L) shows or hides the lyrics box. Lyrics are read from
-your own files; nothing is looked up online.
+The **Lyrics** switch in the header (⌥⌘L) shows or hides the lyrics card. By default lyrics are read
+from your own files and nothing is looked up online.
 
 1. A **`.lrc` file beside the song with the same name** (`Song.flac` and
    `Song.lrc`). Synced lines like `[01:23.45]words` follow the music: the line
@@ -227,8 +222,40 @@ your own files; nothing is looked up online.
    comment, an MP3's unsynchronized lyrics (USLT) and an M4A's lyrics. Tag
    text that is in LRC format is synced too.
 
+4. **Online, only if you ask.** With none of the above the box offers
+   **Look up online** for that song, and **Playback → Look Up Missing Lyrics
+   Online (LRCLIB)** does it automatically (off by default). It asks
+   [LRCLIB](https://lrclib.net), a free lyrics database, which means the
+   song's title, artist, album and length are sent to lrclib.net. It prefers
+   synced lyrics. A hit is saved in `~/Library/Application Support/Zuujis Media
+   Player/Lyrics/` (never beside your music), so each song is asked about once.
+   Songs need a title and artist in their tags.
+
 With none of these the box says so. A synced lyric also shows in the menu bar
 window.
+
+### Desktop widgets
+
+Two widgets are built in, each in small, medium and large. Add them the usual
+way: right-click the desktop (or open Notification Center), choose **Edit
+Widgets**, and look for **Zuujis Media Player**.
+
+- **Now Playing**: the cover and title; the medium size adds the current lyric
+  and previous / play / next buttons; the large one shows the lyrics around the
+  line being sung. The progress bar and the lyric line move by themselves.
+- **Equalizer**: a remote, since a widget has no sliders to drag. Small has
+  power, Bypass, a next-preset button and preamp − / +. Medium adds **Bass**,
+  **Mid** and **Treble** steppers (1 dB each on every band in that range:
+  under 250 Hz, up to 4 kHz, above). Large adds **Flat** and nine **preset
+  buttons** that apply a preset with one tap. Tap the preamp value to reset it.
+  Fine shaping stays in the app.
+
+The buttons act on the running app, which is why it opens at login; if the app
+is not running they do nothing. Widgets refresh when something they show
+changes, so a slider drag shows up a moment after you let go. They are
+sandboxed and read what the app writes (`widget-state.json` and the cover) in
+`~/Library/Application Support/Zuujis Media Player/`. macOS only finds the
+widgets once the app is in `/Applications` and has been opened.
 
 ### Menu bar and login
 
@@ -248,8 +275,7 @@ General → Login Items & Extensions.
 
 ### Library
 
-The player's **Library** box opens from the bar under the player controls
-(⌘L) and browses your music by artist, by genre, or by saved
+The **Library** card (⌘L) browses your music by artist, by genre, or by saved
 playlist (the switch in its header), down to the songs. Add folders
 with **Add Music Folder…** (or **Folders** in the card); folders on external
 drives work too, and stay listed, marked offline, while the drive is unplugged.
@@ -272,10 +298,11 @@ drives work too, and stay listed, marked offline, while the drive is unplugged.
   every file's tags once to fill genres in.
 - In a narrow box the middle column (albums, or artists under a genre) is
   dropped and the songs list shows everything under what is selected.
-- The **Graph | Faders** switch in the equalizer widget (or **View**, ⌘G and
-  ⌘E) chooses the EQ view, and the header's switches show or hide the widgets.
+- The header's switches (or **View**, ⌘G and ⌘E) choose the EQ view and show
+  or hide the cards.
 - The palette button in the header picks a colour theme: Midnight (default), Light, Graphite, Black, Ocean, Forest, Ember or Orchid. **View → Theme** has the same list. The choice is remembered. The Visualizer window stays dark.
-  The **Response graph** and the **Equalizer faders** are one or the other.
+  The **Response graph** and the **Equalizer faders** are one or the other:
+  clicking the one that is showing hides it, clicking the other switches.
   The graph does everything the faders do. It also shows the player's spectrum
   while the EQ's power button is off (the faders and graph then show the curve you have set, but the
   player plays flat).
@@ -289,7 +316,7 @@ Inside a playlist, drag songs to reorder or use **Move Up / Move Down**, and
 song whose drive is unplugged keeps its place, marked *File not found*. The
 **Queue** window's **Save** button turns the current queue into a playlist.
 
-**Favorites.** Click the heart on a song (in the Library or beside the title in the player),
+**Favorites.** Click the heart on a song (in the Library or beside the title),
 right-click it and choose **Add to Favorites**, or press **⌘D** for the song
 that is playing. Hearted songs go into a **Favorites** playlist that is always
 the first one in the Playlists view; it can be played, queued and reordered
@@ -311,7 +338,7 @@ Try it on a copy first if the files matter.
 ### Visualizer
 
 Choose **Visualizer → Open Visualizer**, or pick a mode from the Visualizer
-menu, or press the **Visualizer** chip in the player widget. **Shuffle** moves
+menu, or press the **Visualizer** button in the header. **Shuffle** moves
 through every visualization at random — the hand-tuned presets, freshly
 remixed ones, and any MilkDrop presets you have imported — dissolving from one
 to the next on a beat. Everything the visualizer draws is driven by the audio,

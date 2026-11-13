@@ -6,19 +6,37 @@ struct MainView: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var presets: PresetManager
     @EnvironmentObject private var player: PlayerEngine
+    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.lyrics) private var showLyrics = true
+    @AppStorage(Panels.eq) private var eqPanel = Panels.response
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
-    /// The smallest the window goes; below the widgets' own minimums the
-    /// deck stacks them and scrolls.
-    static let minSize = CGSize(width: 560, height: 440)
+    /// The smallest the window goes. Below the cards' own minimums the
+    /// content scrolls.
+    static let minSize = CGSize(width: 620, height: 460)
+    /// Width from which the lyrics card sits beside the library (or the EQ)
+    /// instead of under it.
+    static let besideWidth: CGFloat = 1080
+    static let lyricsWidth: CGFloat = 340
 
     var body: some View {
         let _ = Theme.apply(themeID)
-        VStack(spacing: 0) {
-            HeaderBar()
-            // The widgets (player, equalizer) arrange themselves in what is
-            // left of the window: side by side, stacked, or one alone.
-            WidgetDeck()
+        GeometryReader { root in
+            VStack(spacing: 0) {
+                HeaderBar()
+                PlayerBar(width: root.size.width, isShort: root.size.height < 600)
+                // The cards stretch to fill whatever height the window has; the
+                // scroll view only matters once their minimums outgrow it.
+                GeometryReader { geo in
+                    ScrollView {
+                        cards(width: geo.size.width - 32)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 6)
+                            .padding(.bottom, 16)
+                            .frame(minHeight: geo.size.height)
+                    }
+                }
+            }
         }
         // Dropping audio files or a folder anywhere on the window plays them.
         .dropDestination(for: URL.self) { urls, _ in
@@ -44,25 +62,72 @@ struct MainView: View {
         // Rebuild on a theme change so every view reads the new palette.
         .id(themeID)
     }
+
+    /// Library, lyrics and the EQ, arranged for the width they have: with
+    /// room the lyrics sit beside the library (or the EQ when the library is
+    /// off); without it they go under.
+    @ViewBuilder
+    private func cards(width: CGFloat) -> some View {
+        let eqShown = eqPanel != Panels.hidden
+        let beside = width >= Self.besideWidth
+        VStack(spacing: 14) {
+            if showLibrary {
+                if showLyrics && beside {
+                    HStack(alignment: .top, spacing: 14) {
+                        LibraryView(fillsHeight: !eqShown, availableWidth: width - Self.lyricsWidth - 14)
+                        LyricsCard().frame(width: Self.lyricsWidth).frame(maxHeight: .infinity)
+                    }
+                    .frame(maxHeight: eqShown ? nil : .infinity)
+                } else {
+                    LibraryView(fillsHeight: !eqShown && !showLyrics, availableWidth: width)
+                    if showLyrics { LyricsCard().frame(minHeight: 260, maxHeight: eqShown ? 260 : .infinity) }
+                }
+                if eqShown { eqCard }
+            } else if showLyrics && eqShown && beside {
+                HStack(alignment: .top, spacing: 14) {
+                    eqCard.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    LyricsCard().frame(width: Self.lyricsWidth).frame(maxHeight: .infinity)
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                if showLyrics { LyricsCard().frame(minHeight: 260, maxHeight: eqShown ? 260 : .infinity) }
+                if eqShown { eqCard }
+            }
+            if !showLibrary && !showLyrics && !eqShown { AllPanelsHidden() }
+        }
+    }
+
+    @ViewBuilder
+    private var eqCard: some View {
+        if eqPanel == Panels.response { SpectrumView() }
+        if eqPanel == Panels.equalizer { BandControlsView().frame(maxWidth: .infinity) }
+    }
 }
 
-// MARK: - Widget switches
+// MARK: - Panel switches
 
-/// The two widget switches in the header. Both can be on; each box inside a
-/// widget (lyrics, library, graph or faders) has its own control there.
 struct PanelToggles: View {
-    @AppStorage(Panels.player) private var showPlayer = true
+    @AppStorage(Panels.library) private var showLibrary = true
+    @AppStorage(Panels.lyrics) private var showLyrics = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
-    @AppStorage(Panels.eqLast) private var eqLast = Panels.response
 
+    /// The EQ is shown as the response graph or as faders, never both; the
+    /// button for the one showing hides it. The four sit in one capsule.
     var body: some View {
         HStack(spacing: 2) {
-            toggle("play.rectangle.fill", isOn: $showPlayer, name: "Player widget", key: "⌥⌘P")
-            toggle("slider.vertical.3", isOn: Panels.eqWidget($eqPanel, last: $eqLast), name: "Equalizer widget", key: "⌥⌘E")
+            toggle("books.vertical.fill", isOn: $showLibrary, name: "Library", key: "⌘L")
+            toggle("quote.bubble.fill", isOn: $showLyrics, name: "Lyrics", key: "⌥⌘L")
+            toggle("waveform.path.ecg", isOn: choice(Panels.response), name: "Response graph", key: "⌘G")
+            toggle("slider.vertical.3", isOn: choice(Panels.equalizer), name: "Equalizer faders", key: "⌘E")
         }
         .padding(3)
         .background(Capsule().fill(Theme.ink.opacity(0.06)))
         .overlay(Capsule().strokeBorder(Theme.ink.opacity(0.10)))
+    }
+
+    private func choice(_ value: String) -> Binding<Bool> {
+        Binding(get: { eqPanel == value },
+                set: { eqPanel = $0 ? value : Panels.hidden })
     }
 
     private func toggle(_ symbol: String, isOn: Binding<Bool>, name: String, key: String) -> some View {
@@ -81,6 +146,36 @@ struct PanelToggles: View {
     }
 }
 
+/// Shown when every panel is switched off, so the window is not just blank.
+struct AllPanelsHidden: View {
+    @AppStorage(Panels.library) private var showLibrary = true
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.3.group")
+                .font(.system(size: 30))
+                .foregroundStyle(Theme.ink.opacity(0.28))
+            Text("Everything is hidden")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.ink.opacity(0.75))
+            Text("Bring a panel back from the View menu or the switches in the header.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.ink.opacity(0.45))
+            Button {
+                withAnimation(.spring(duration: 0.3)) { showLibrary = true }
+            } label: {
+                Text("Show Library")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.9))
+                    .pill(active: true)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Header Bar
 
 /// The brand, the widget switches, the output device and the theme; there is
@@ -93,7 +188,6 @@ struct HeaderBar: View {
     @EnvironmentObject private var meters: MeterState
     @EnvironmentObject private var presets: PresetManager
     @Environment(\.openWindow) private var openWindow
-    @AppStorage(Panels.player) private var showPlayer = true
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -131,9 +225,7 @@ struct HeaderBar: View {
             PanelToggles()
             DeviceMenu(compact: compact)
 
-            // The player widget carries the visualizer switch; without it the
-            // header does.
-            if !showPlayer {
+            do {
                 Button {
                     openWindow(id: ZuujisMediaPlayerApp.visualizerWindowID)
                 } label: {

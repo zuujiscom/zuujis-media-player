@@ -87,12 +87,11 @@ struct ZuujisMediaPlayerApp: App {
     @StateObject private var playlists = PlaylistStore()
     @StateObject private var lyrics = LyricsStore()
     @StateObject private var login = LaunchAtLogin()
+    @State private var widgets: WidgetBridge?
     // The View menu drives the same saved switches as the header buttons.
-    @AppStorage(Panels.player) private var showPlayer = true
-    @AppStorage(Panels.library) private var showLibrary = false
+    @AppStorage(Panels.library) private var showLibrary = true
     @AppStorage(Panels.lyrics) private var showLyrics = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
-    @AppStorage(Panels.eqLast) private var eqLast = Panels.response
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
     var body: some Scene {
@@ -183,13 +182,6 @@ struct ZuujisMediaPlayerApp: App {
 
             // View: the system menu keeps Enter Full Screen; these go above it.
             CommandGroup(before: .toolbar) {
-                Toggle("Player Widget", isOn: $showPlayer)
-                    .keyboardShortcut("p", modifiers: [.command, .option])
-                Toggle("Equalizer Widget", isOn: Panels.eqWidget($eqPanel, last: $eqLast))
-                    .keyboardShortcut("e", modifiers: [.command, .option])
-
-                Divider()
-
                 Toggle("Lyrics", isOn: $showLyrics)
                     .keyboardShortcut("l", modifiers: [.command, .option])
                 Toggle("Library", isOn: $showLibrary)
@@ -301,6 +293,7 @@ struct ZuujisMediaPlayerApp: App {
 
                 Divider()
 
+                Toggle("Look Up Missing Lyrics Online (LRCLIB)", isOn: $lyrics.onlineLookup)
                 Toggle("Match Output Rate to Each Track", isOn: Binding(
                     get: { player.matchSampleRate }, set: { player.matchSampleRate = $0 }))
                 Toggle("Exclusive Output", isOn: Binding(
@@ -540,6 +533,11 @@ struct ZuujisMediaPlayerApp: App {
             player.queue.saveNow()
         }
         login.enableOnFirstRun()
+        if widgets == nil {
+            let bridge = WidgetBridge(player: player, engine: audioEngine, presets: presetManager, lyrics: lyrics)
+            widgets = bridge
+            bridge.start()
+        }
         // The engine's device didSet runs during init, before this
         // store exists, so the launch device is applied here.
         guard audioEngine.deviceProfiles == nil else { return }

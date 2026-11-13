@@ -3,6 +3,346 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The Now Playing stage under the header: the cover and what is playing on
+/// the left, the transport over the scrubber in the middle, the output
+/// switches and volume on the right. The live spectrum rises behind it, and
+/// the window's backdrop (`ArtworkWash`) is the cover itself, blurred.
+struct PlayerBar: View {
+    @EnvironmentObject private var player: PlayerEngine
+
+    @EnvironmentObject private var queue: PlaybackQueue
+    @EnvironmentObject private var playlists: PlaylistStore
+    @Environment(\.openWindow) private var openWindow
+
+    /// The window's width and whether its height is short; `MainView` supplies
+    /// both so the bar never measures itself.
+    var width: CGFloat = 1100
+    var isShort = false
+
+    static let height: CGFloat = 140
+
+    var body: some View {
+        // Three arrangements, from the full stage to a stacked one for a narrow
+        // window. `ViewThatFits` takes the first that fits.
+        ViewThatFits(in: .horizontal) {
+            wide
+            medium
+            narrow
+        }
+        .padding(.horizontal, 20)
+        .background(alignment: .bottom) {
+            // Only where the bar is one row; stacked, the bars would cross the controls.
+            if width >= 900 {
+                StageSpectrum()
+                    .frame(height: 96)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Space toggles play/pause in this window. A text field being
+        // edited takes the key first, and the visualizer has its own.
+        .background {
+            Button("") { player.togglePlayPause() }
+                .keyboardShortcut(.space, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var artSize: CGFloat { isShort ? 72 : 104 }
+
+    /// Cover and title, transport over the scrubber, output switches, speed and volume.
+    private var wide: some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 16) {
+                artwork(artSize)
+                nowPlaying
+            }
+            .frame(width: 372, alignment: .leading)
+
+            VStack(spacing: 8) {
+                transport
+                Scrubber()
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .trailing, spacing: 10) {
+                outputButtons
+                HStack(spacing: 8) {
+                    SpeedPill()
+                    Spacer(minLength: 0)
+                }
+                volume
+            }
+            .frame(width: 168, alignment: .trailing)
+        }
+        .frame(height: isShort ? 112 : Self.height)
+        .frame(minWidth: 900)
+    }
+
+    /// The song, then the transport; the switches fold into a row under it.
+    private var medium: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 18) {
+                HStack(spacing: 16) {
+                    artwork(artSize)
+                    nowPlaying
+                }
+                .frame(width: 330, alignment: .leading)
+                VStack(spacing: 8) {
+                    transport
+                    Scrubber()
+                }
+                .frame(maxWidth: .infinity)
+            }
+            HStack(spacing: 14) {
+                outputButtons
+                Spacer(minLength: 0)
+                SpeedPill()
+                volume.frame(width: 170)
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(minWidth: 690)
+    }
+
+    /// A narrow window: everything in one column.
+    private var narrow: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 14) {
+                artwork(isShort ? 64 : 84)
+                nowPlaying
+                Spacer(minLength: 0)
+            }
+            Scrubber()
+            transport
+            HStack(spacing: 10) {
+                SpeedPill()
+                Spacer(minLength: 0)
+                outputButtons
+            }
+            volume
+        }
+        .padding(.vertical, 12)
+    }
+
+    // MARK: Now playing
+
+    private var nowPlaying: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let track = player.track {
+                eyebrow(player.state == .playing ? "Now Playing" : (player.state == .paused ? "Paused" : "Stopped"),
+                        live: player.state == .playing)
+                    .padding(.bottom, 7)
+
+                HStack(spacing: 8) {
+                    Text(track.title)
+                        .font(.system(size: 21, weight: .bold))
+                        .tracking(-0.3)
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    let on = playlists.isFavorite(track.url.path)
+                    Button {
+                        playlists.toggleFavorite(track.url.path)
+                    } label: {
+                        Image(systemName: on ? "heart.fill" : "heart")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(on ? Theme.pink : Theme.ink.opacity(0.4))
+                            .shadow(color: on ? Theme.pink.opacity(0.6) : .clear, radius: 5)
+                    }
+                    .buttonStyle(.plain)
+                    .help(on ? "Remove from Favorites  (⌘D)" : "Add to Favorites  (⌘D)")
+                }
+
+                Text([track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — "))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.66))
+                    .lineLimit(1)
+                    .padding(.top, 3)
+
+                HStack(spacing: 7) {
+                    if track.isLossless {
+                        Text("LOSSLESS")
+                            .font(.system(size: 8.5, weight: .heavy))
+                            .tracking(0.7)
+                            .foregroundStyle(Theme.mint)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(Theme.mint.opacity(0.14)))
+                            .overlay(Capsule().strokeBorder(Theme.mint.opacity(0.6)))
+                    }
+                    Text(track.formatSummary)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.ink.opacity(0.5))
+                        .lineLimit(1)
+                }
+                .padding(.top, 10)
+            } else if let error = player.errorMessage {
+                eyebrow("Could not play", live: false, tint: Theme.amber)
+                    .padding(.bottom, 7)
+                Text(error)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.amber)
+                    .lineLimit(3)
+            } else {
+                eyebrow("Ready", live: false)
+                    .padding(.bottom, 7)
+                Text("Nothing playing")
+                    .font(.system(size: 21, weight: .bold))
+                    .tracking(-0.3)
+                    .foregroundStyle(Theme.ink.opacity(0.9))
+                Text("Drop songs here, or pick one below")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.55))
+                    .lineLimit(1)
+                    .padding(.top, 3)
+                Button {
+                    PlayerActions.openFiles(in: player)
+                } label: {
+                    Label("Open Files…", systemImage: "folder")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Theme.onSignal)
+                        .padding(.horizontal, 12)
+                        .frame(height: 26)
+                        .background(Capsule().fill(Theme.signal))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10)
+            }
+        }
+    }
+
+    private func eyebrow(_ text: String, live: Bool, tint: Color = Theme.mint) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(live ? tint : Theme.ink.opacity(0.3))
+                .frame(width: 6, height: 6)
+                .shadow(color: live ? tint.opacity(0.9) : .clear, radius: 4)
+            Text(text.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.4)
+                .foregroundStyle(live ? tint : Theme.ink.opacity(0.5))
+        }
+    }
+
+    private func artwork(_ size: CGFloat) -> some View {
+        Group {
+            if let image = player.track?.artwork {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                // No cover: a tile in the track's own colour, so songs
+                // without art still look different from one another.
+                ZStack {
+                    let tint = player.track.map { Theme.tint(for: $0.album ?? $0.title) }
+                    LinearGradient(colors: tint.map { [$0.opacity(0.85), Theme.violet.opacity(0.35)] }
+                                           ?? [Theme.ink.opacity(0.10), Theme.ink.opacity(0.04)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Image(systemName: "music.note")
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundStyle(player.track == nil ? Theme.ink.opacity(0.3) : Color.white.opacity(0.85))
+                        .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.35), Color.white.opacity(0.05)],
+                                         startPoint: .top, endPoint: .bottom)))
+        .shadow(color: .black.opacity(Theme.palette.isLight ? 0.22 : 0.5), radius: 16, y: 8)
+    }
+
+    // MARK: Transport
+
+    private var transport: some View {
+        let idle = player.track == nil && queue.items.isEmpty
+        return HStack(spacing: 14) {
+            IconButton(symbol: "shuffle", size: 28, glyph: 12, active: queue.shuffle, prominent: false) {
+                queue.shuffle.toggle()
+            }
+            .help(queue.shuffle ? "Shuffle is on" : "Shuffle is off")
+
+            HStack(spacing: 10) {
+                IconButton(symbol: "backward.fill", size: 36, glyph: 15, prominent: false) { player.previous() }
+                    .help("Previous  (⌘←)")
+
+                PlayButton(isPlaying: player.state == .playing) { player.togglePlayPause() }
+                    .help("Play / Pause  (Space)")
+
+                IconButton(symbol: "forward.fill", size: 36, glyph: 15, prominent: false) { player.next() }
+                    .help("Next  (⌘→)")
+            }
+            .disabled(idle)
+            .opacity(idle ? 0.4 : 1)
+
+            IconButton(symbol: queue.repeatMode == .one ? "repeat.1" : "repeat", size: 28, glyph: 12,
+                       active: queue.repeatMode != .off, prominent: false) {
+                queue.repeatMode = queue.repeatMode.next
+            }
+            .help({
+                switch queue.repeatMode {
+                case .off: return "Repeat is off"
+                case .all: return "Repeating the queue"
+                case .one: return "Repeating this track"
+                }
+            }())
+        }
+    }
+
+    // MARK: Output and volume
+
+    private var outputButtons: some View {
+        HStack(spacing: 6) {
+            IconButton(symbol: player.exclusiveMode ? "lock.fill" : "lock.open", active: player.exclusiveMode) {
+                player.exclusiveMode.toggle()
+            }
+            .help(player.exclusiveMode
+                  ? "Exclusive output on: other apps are silent while this plays"
+                  : "Exclusive output off: other apps can play at the same time")
+
+            IconButton(symbol: "waveform.badge.magnifyingglass", active: player.matchSampleRate) {
+                player.matchSampleRate.toggle()
+            }
+            .help(player.matchSampleRate
+                  ? "Output rate follows each track (on, applies from the next track or rebuild)"
+                  : "Output rate left as the device has it (off)")
+
+            IconButton(symbol: "music.note.list") {
+                openWindow(id: ZuujisMediaPlayerApp.playlistWindowID)
+            }
+            .help("Show the queue  (⇧⌘L)")
+
+            IconButton(symbol: "folder") {
+                PlayerActions.openFiles(in: player)
+            }
+            .help("Open audio files or a folder  (⌘O)")
+        }
+    }
+
+    private var volume: some View {
+        HStack(spacing: 8) {
+            Button {
+                player.volume = player.volume < 0.01 ? 0.8 : 0
+            } label: {
+                Image(systemName: player.volume < 0.01 ? "speaker.slash.fill"
+                      : (player.volume < 0.4 ? "speaker.wave.1.fill" : "speaker.wave.2.fill"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.65))
+                    .frame(width: 20, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            GlowSlider(value: Binding(get: { Double(player.volume) },
+                                      set: { player.volume = Float($0) }))
+        }
+        .help("Player volume  (⌘↑ / ⌘↓)")
+    }
+}
+
 /// The big play/pause button: the signal gradient with a glow that follows it.
 struct PlayButton: View {
     let isPlaying: Bool
