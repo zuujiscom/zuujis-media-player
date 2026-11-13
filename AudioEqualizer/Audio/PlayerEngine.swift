@@ -92,6 +92,8 @@ final class PlayerEngine: ObservableObject {
     /// What the graph was built for. A track with a different sample rate or
     /// channel count needs a rebuild; one with the same plays gaplessly.
     private var graphFormat: AVAudioFormat?
+    /// Rate the player's EQ runs at; the filter maths depends on it.
+    var graphSampleRate: Double { graphFormat?.sampleRate ?? 48_000 }
 
     /// Mirrors the bands, bypass and master gain from here.
     private weak var equalizer: AudioEngine?
@@ -672,7 +674,7 @@ final class PlayerEngine: ObservableObject {
     /// deliver it. Never write `bands[i].gain` straight to the node.
     private func applyEQ() {
         guard let equalizer else { return }
-        let effective = EQResponse.compensated(equalizer.bands)
+        let effective = EQResponse.compensated(equalizer.bands, sampleRate: graphSampleRate)
 
         // `AVAudioUnitEQ` has a fixed band count.
         if effective.count != eqNode.bands.count {
@@ -742,7 +744,7 @@ final class PlayerEngine: ObservableObject {
                 level: min(1, analyzer.rms(buffer: buffer) * 3),
                 latencyMs: 0
             )
-            DispatchQueue.main.async { meters?.snapshot = snapshot }
+            DispatchQueue.main.async { meters?.publishPlayer(snapshot) }
         }
     }
 
@@ -758,7 +760,7 @@ final class PlayerEngine: ObservableObject {
     private func clearMeters() {
         latest.clear()
         if equalizer?.isRunning != true {
-            equalizer?.meters.snapshot = MeterSnapshot()
+            equalizer?.meters.clearPlayer()
         }
     }
 
