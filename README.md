@@ -4,7 +4,16 @@ A system-wide equalizer for macOS. It shapes and boosts whatever your Mac is
 playing (music, videos, games, calls) on whichever output you are using, with
 no virtual audio driver to install.
 
-![Zuujis Media Player's main window with the Rock preset applied: the EQ curve drawn over the live spectrum, above a 31-band equalizer whose faders are lit by the signal at each band, next to the visualizer window showing the Skyline mode.](docs/screenshot.webp)
+![Zuujis Media Player playing a song: the library browsed by artist above the EQ response curve drawn over the live spectrum.](docs/screenshot.webp)
+
+<p>
+<img src="docs/playlists.webp" width="49%" alt="The Playlists view, with Favorites and a Road Trip playlist open.">
+<img src="docs/equalizer.webp" width="49%" alt="The Genres view above the 10-band equalizer, its faders lit by the signal at each band.">
+</p>
+
+![The Visualizer window in Skyline mode, its towers driven by the song playing.](docs/visualizer.webp)
+
+<sub>Screenshots use a made-up library; the songs and artists are not real.</sub>
 
 - **10, 15 or 31 band graphic EQ**, from 20 Hz to 20 kHz, ±24 dB per band.
 - **Master gain up to +24 dB**, for quiet laptops, speakers and headphones.
@@ -50,13 +59,13 @@ background service. The app only runs while you have it open.
 
 - **The app itself**, wherever you put it (usually `/Applications`).
 - **Your presets, device profiles and imported MilkDrop presets** in
-  `~/Library/Application Support/AudioEqualizer/`.
+  `~/Library/Application Support/Zuujis Media Player/`.
 - **Your music library** (the folders you added and the tags read from them)
   in `library.json`, and your saved playlists in `playlists.json`, in the same
   folder. Your music files stay where they are.
 - **Its settings** (master gain, visualizer choices, whether device profiles
   are on) in its preferences file,
-  `~/Library/Preferences/com.zuujis.AudioEqualizer.plist`.
+  `~/Library/Preferences/com.zuujis.MediaPlayer.plist`.
 - **The audio-capture permission** you grant it, which macOS keeps in its
   privacy settings under Privacy & Security → Screen & System Audio Recording.
 
@@ -74,12 +83,12 @@ background service. The app only runs while you have it open.
 ```bash
 git clone https://github.com/zuujiscom/zuujis-media-player.git
 cd zuujis-media-player
-xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
+xcodebuild -project ZuujisMediaPlayer.xcodeproj -scheme ZuujisMediaPlayer -configuration Release -derivedDataPath build
 cp -R build/Build/Products/Release/"Zuujis Media Player.app" /Applications/
 open /Applications/"Zuujis Media Player.app"
 ```
 
-You can also open `AudioEqualizer.xcodeproj` in Xcode and press Run. The
+You can also open `ZuujisMediaPlayer.xcodeproj` in Xcode and press Run. The
 project signs with Xcode's "Sign to Run Locally" setting, so no Apple
 developer account is needed to build it for your own Mac.
 
@@ -106,7 +115,7 @@ back that device's saved curve.
   Equalizer box headers) lists every preset and saves, imports,
   renames, duplicates, exports and deletes your own. **Reset EQ to Flat** (or
   the **Flat** button) clears the curve.
-- Presets live in `~/Library/Application Support/AudioEqualizer/`. Use
+- Presets live in `~/Library/Application Support/Zuujis Media Player/`. Use
   **File → Reveal Presets File in Finder** to get there.
 
 ### Player
@@ -230,7 +239,7 @@ community packs have unclear licensing, so bring your own.
 
 ```bash
 git pull
-xcodebuild -project AudioEqualizer.xcodeproj -scheme AudioEqualizer -configuration Release -derivedDataPath build
+xcodebuild -project ZuujisMediaPlayer.xcodeproj -scheme ZuujisMediaPlayer -configuration Release -derivedDataPath build
 ```
 
 Quit the app, copy the new `Zuujis Media Player.app` over the old one in
@@ -242,8 +251,8 @@ Quit the app, copy the new `Zuujis Media Player.app` over the old one in
 2. To remove your presets, device profiles and settings too:
 
    ```bash
-   rm -rf ~/Library/Application\ Support/AudioEqualizer
-   defaults delete com.zuujis.AudioEqualizer
+   rm -rf ~/Library/Application\ Support/Zuujis\ Media\ Player
+   defaults delete com.zuujis.MediaPlayer
    ```
 
 3. To remove its audio-capture permission, open System Settings → Privacy &

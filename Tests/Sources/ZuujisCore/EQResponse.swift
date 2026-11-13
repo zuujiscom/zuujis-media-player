@@ -1,0 +1,1 @@
+../../../ZuujisMediaPlayer/Models/EQResponse.swift

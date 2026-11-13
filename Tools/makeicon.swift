@@ -8,7 +8,7 @@ import CoreGraphics
 // so nothing is upscaled. 16/32pt use three solid bars with no gaps, which stay legible.
 //
 // Regenerate after editing:
-//   swift Tools/makeicon.swift AudioEqualizer/Resources/Assets.xcassets/AppIcon.appiconset
+//   swift Tools/makeicon.swift ZuujisMediaPlayer/Resources/Assets.xcassets/AppIcon.appiconset
 //
 // Not part of the app target — it has top-level code and builds standalone.
 

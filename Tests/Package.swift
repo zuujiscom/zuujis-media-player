@@ -3,14 +3,14 @@ import PackageDescription
 
 // Unit tests for the app's pure logic (EQ maths, play queue, output-rate
 // choice). The app itself is an Xcode project; these files are symlinked in
-// from AudioEqualizer/ so nothing is duplicated and the app target is
+// from ZuujisMediaPlayer/ so nothing is duplicated and the app target is
 // untouched. Run with `swift test` from this folder.
 let package = Package(
-    name: "AE2Core",
+    name: "ZuujisCore",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "AE2Core", path: "Sources/AE2Core"),
-        .testTarget(name: "AE2CoreTests", dependencies: ["AE2Core"], path: "Tests/AE2CoreTests"),
+        .target(name: "ZuujisCore", path: "Sources/ZuujisCore"),
+        .testTarget(name: "ZuujisCoreTests", dependencies: ["ZuujisCore"], path: "Tests/ZuujisCoreTests"),
     ],
     swiftLanguageVersions: [.v5]
 )
