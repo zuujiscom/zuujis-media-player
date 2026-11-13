@@ -106,6 +106,26 @@ final class PlayerEngine: ObservableObject {
         didSet { UserDefaults.standard.set(matchSampleRate, forKey: "playerMatchSampleRate") }
     }
 
+    /// Takes the output device for this app alone while playing, so nothing else
+    /// can mix into it and the stream goes to the hardware as it is. Other apps
+    /// are silent until playback stops, so it is off by default. Released on
+    /// stop, when switched off, and by the system if the app quits or crashes.
+    @Published var exclusiveMode: Bool = UserDefaults.standard.bool(forKey: "playerExclusiveMode") {
+        didSet {
+            UserDefaults.standard.set(exclusiveMode, forKey: "playerExclusiveMode")
+            if !exclusiveMode { releaseExclusive() }
+        }
+    }
+
+    /// The device this player holds exclusively, if any.
+    private var hogged: AudioDeviceID?
+
+    private func releaseExclusive() {
+        guard let device = hogged else { return }
+        hogged = nil
+        OutputRate.releaseExclusive(of: device)
+    }
+
     /// The device and rate to put back when playback stops.
     private var restoreRate: (device: AudioDeviceID, rate: Double)?
 
@@ -113,9 +133,14 @@ final class PlayerEngine: ObservableObject {
     /// Skipped while the system route runs: its tap and aggregate device are
     /// built for one rate and would go silent if it changed under them.
     private func matchDeviceRate(to fileRate: Double) {
-        guard matchSampleRate, equalizer?.isRunning != true,
-              let device = OutputRate.defaultOutputDevice(),
-              let current = OutputRate.nominalRate(of: device) else { return }
+        guard equalizer?.isRunning != true, let device = OutputRate.defaultOutputDevice() else { return }
+
+        // Exclusive access first, so the rate change below applies to a device
+        // nobody else is using. A device that was switched away from is freed.
+        if let held = hogged, held != device { releaseExclusive() }
+        if exclusiveMode, OutputRate.takeExclusive(of: device) { hogged = device }
+
+        guard matchSampleRate, let current = OutputRate.nominalRate(of: device) else { return }
         guard let target = OutputRate.bestRate(for: fileRate, in: OutputRate.supportedRanges(of: device)),
               target != current else { return }
         if restoreRate?.device != device { restoreRate = (device, current) }
@@ -124,6 +149,7 @@ final class PlayerEngine: ObservableObject {
 
     /// Puts the device back at the rate it had before playback matched it.
     private func restoreDeviceRate() {
+        releaseExclusive()
         guard let saved = restoreRate else { return }
         restoreRate = nil
         guard equalizer?.isRunning != true,
@@ -196,6 +222,15 @@ final class PlayerEngine: ObservableObject {
             MainActor.assumeIsolated { self?.applyEQ() }
         }
         .store(in: &cancellables)
+
+        // The system route needs the device too: let go of an exclusive hold
+        // the moment it starts, or its aggregate device could not use it.
+        equalizer.$isRunning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] running in
+                MainActor.assumeIsolated { if running { self?.releaseExclusive() } }
+            }
+            .store(in: &cancellables)
 
         // Editing the queue can invalidate what is already scheduled.
         Publishers.Merge4(

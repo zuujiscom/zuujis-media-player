@@ -124,6 +124,10 @@ the system route, so it works whether or not the engine is running.
   it (the button beside the volume slider turns this off). It is skipped while
   the system EQ is running, and the previous rate is restored when playback
   stops.
+- The lock button beside it turns on **exclusive output**: the player takes
+  the output device for itself while it plays, so nothing mixes into the stream.
+  Every other app is silent until playback stops, and it is off by default. It
+  is released when the system EQ starts.
 
 ### Visualizer
 

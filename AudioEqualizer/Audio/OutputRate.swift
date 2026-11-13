@@ -60,6 +60,44 @@ enum OutputRate {
         return nil
     }
 
+    /// Exclusive ("hog") mode: while one process holds a device, no other
+    /// process can play through it, and nothing mixes with or resamples our
+    /// output. The owner's pid is the property's value; -1 means free.
+    static func hogOwner(of device: AudioDeviceID) -> pid_t? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyHogMode,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var pid = pid_t(-1)
+        var size = UInt32(MemoryLayout<pid_t>.size)
+        return AudioObjectGetPropertyData(device, &address, 0, nil, &size, &pid) == noErr ? pid : nil
+    }
+
+    /// Takes the device for this process. False if another process holds it or
+    /// the device does not support it.
+    @discardableResult
+    static func takeExclusive(of device: AudioDeviceID) -> Bool {
+        if hogOwner(of: device) == getpid() { return true }
+        return setHogOwner(getpid(), of: device) && hogOwner(of: device) == getpid()
+    }
+
+    /// Frees the device if this process holds it; never touches another
+    /// process's hold.
+    static func releaseExclusive(of device: AudioDeviceID) {
+        guard hogOwner(of: device) == getpid() else { return }
+        setHogOwner(-1, of: device)
+    }
+
+    @discardableResult
+    private static func setHogOwner(_ pid: pid_t, of device: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyHogMode,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var value = pid
+        return AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<pid_t>.size), &value) == noErr
+    }
+
     @discardableResult
     static func setNominalRate(_ rate: Double, of device: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(

@@ -35,6 +35,19 @@ struct PlayerBar: View {
                 .accessibilityHidden(true)
 
             Button {
+                player.exclusiveMode.toggle()
+            } label: {
+                Image(systemName: player.exclusiveMode ? "lock.fill" : "lock.open")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(player.exclusiveMode ? 0.95 : 0.4))
+                    .pill()
+            }
+            .buttonStyle(.plain)
+            .help(player.exclusiveMode
+                  ? "Exclusive output on: other apps are silent while this plays"
+                  : "Exclusive output off: other apps can play at the same time")
+
+            Button {
                 player.matchSampleRate.toggle()
             } label: {
                 Image(systemName: "waveform.badge.magnifyingglass")
