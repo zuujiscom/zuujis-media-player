@@ -22,9 +22,34 @@ struct LyricsCard: View {
                         .background(Capsule().fill((lyrics.isSynced ? Theme.mint : Theme.ink).opacity(0.12)))
                 }
             }
+            if store.lyrics?.isSynced == false || store.isTiming || store.timingStatus != nil { timingBar }
             LyricsBox(showsBadge: false)
         }
         .card()
+    }
+
+    /// For untimed lyrics: listen to the song and time them, line and word.
+    private var timingBar: some View {
+        HStack(spacing: 8) {
+            if store.isTiming { ProgressView().controlSize(.small) }
+            if let status = store.timingStatus {
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink.opacity(0.6))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            if !store.isTiming, store.lyrics?.isSynced == false {
+                Button { store.timeCurrentLyrics() } label: {
+                    Label("Time These Lyrics", systemImage: "waveform.badge.mic")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Theme.ink.opacity(0.85))
+                        .pill()
+                }
+                .buttonStyle(.plain)
+                .help("Listen to this song on this Mac (speech recognition, nothing is uploaded) and time each line and word. Saves a .lrc file beside the song.")
+            }
+        }
     }
 
     /// − 0.0s + : shifts this song's lyrics, for a file whose timing is off.
@@ -69,6 +94,8 @@ struct LyricsBox: View {
     /// The corner badge; the main window's card shows it in its header instead.
     var showsBadge = true
     @State private var current: Int?
+    /// How many words of the current line have been sung, for word-timed lines.
+    @State private var sung = 0
     @State private var userScrolledAt = Date.distantPast
 
     var body: some View {
@@ -97,8 +124,11 @@ struct LyricsBox: View {
 
     private func update() {
         guard let lyrics = store.lyrics, lyrics.isSynced else { if current != nil { current = nil }; return }
-        let index = lyrics.currentIndex(at: store.time(for: player))
+        let time = store.time(for: player)
+        let index = lyrics.currentIndex(at: time)
         if index != current { current = index }
+        let words = index.map { lyrics.lines[$0].wordsSung(at: time) } ?? 0
+        if words != sung { sung = words }
     }
 
     // MARK: States
@@ -161,7 +191,7 @@ struct LyricsBox: View {
                         Color.clear.frame(height: max(34, geo.size.height * 0.36))
                         ForEach(lyrics.lines) { line in
                             LyricRow(line: line, distance: current.map { line.id - $0 } ?? (line.id + 1),
-                                     width: geo.size.width)
+                                     width: geo.size.width, sung: line.id == current ? sung : nil)
                                 .id(line.id)
                                 .onTapGesture {
                                     if let time = line.time { player.seek(to: time) }
@@ -219,20 +249,38 @@ private struct LyricRow: View {
     /// 0 is the line being sung; negative is behind it, positive ahead.
     let distance: Int
     let width: CGFloat
+    /// For the line being sung, when it has word times: how many words are lit.
+    var sung: Int? = nil
     @State private var hovering = false
+
+    private static var lit: AnyShapeStyle {
+        AnyShapeStyle(LinearGradient(colors: Theme.signalColors, startPoint: .leading, endPoint: .trailing))
+    }
+
+    /// The line as text: word by word when it is being sung and has word
+    /// times (sung words lit, the rest dim), otherwise whole.
+    private func content(active: Bool, near: Int) -> Text {
+        if active, let sung, let words = line.words, !words.isEmpty {
+            return words.enumerated().reduce(Text("")) { text, item in
+                let word = Text((item.offset > 0 ? " " : "") + item.element.text)
+                return text + (item.offset < sung
+                               ? word.foregroundStyle(Self.lit)
+                               : word.foregroundStyle(Theme.ink.opacity(0.42)))
+            }
+        }
+        let text = Text(line.text.isEmpty ? "♪" : line.text)
+        return active ? text.foregroundStyle(Self.lit)
+            : text.foregroundStyle(Theme.ink.opacity(hovering ? 0.8 : max(0.16, 0.55 - 0.1 * Double(near))))
+    }
 
     var body: some View {
         let active = distance == 0
         let size = min(26, max(15, width / 17))
         let near = abs(distance)
-        let text = line.text.isEmpty ? "♪" : line.text
 
-        Text(text)
+        content(active: active, near: near)
             .font(.system(size: active ? size : size * 0.82, weight: active ? .bold : .semibold))
             .tracking(active ? -0.2 : 0)
-            .foregroundStyle(active
-                             ? AnyShapeStyle(LinearGradient(colors: Theme.signalColors, startPoint: .leading, endPoint: .trailing))
-                             : AnyShapeStyle(Theme.ink.opacity(hovering ? 0.8 : max(0.16, 0.55 - 0.1 * Double(near)))))
             .shadow(color: active ? Theme.violet.opacity(0.55) : .clear, radius: 10)
             .blur(radius: active || hovering ? 0 : min(1.6, 0.35 * Double(max(0, near - 1))))
             .frame(maxWidth: .infinity, alignment: .leading)

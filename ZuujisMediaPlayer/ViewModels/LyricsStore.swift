@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import AppKit
 import AVFoundation
 import Combine
 import Foundation
@@ -78,6 +79,57 @@ final class LyricsStore: ObservableObject {
         cancellable = player.$track
             .removeDuplicates { $0?.url == $1?.url }
             .sink { [weak self] track in self?.load(track) }
+        // A timed .lrc saved beside the playing song after its lyrics loaded
+        // (made by hand or another tool) is picked up on returning to the app.
+        activation = NotificationCenter.default
+            .publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.recheckSidecar() }
+    }
+
+    private var activation: AnyCancellable?
+
+    // MARK: Timing untimed lyrics
+
+    /// Progress or the last failure of "Time These Lyrics"; nil when idle.
+    @Published private(set) var timingStatus: String?
+    @Published private(set) var isTiming = false
+
+    /// Listens to the playing song with on-device speech recognition, times
+    /// its untimed lyrics line by line and word by word, and saves them as a
+    /// `.lrc` beside the song (see `LyricsTimer`).
+    func timeCurrentLyrics() {
+        guard let track = currentTrack, let plain = lyrics, !plain.isSynced, !isTiming else { return }
+        isTiming = true
+        timingStatus = "Starting…"
+        Task { [weak self] in
+            do {
+                let timed = try await LyricsTimer.time(plain, song: track.url, title: track.title, artist: track.artist) { text in
+                    if self?.url == track.url { self?.timingStatus = text }
+                }
+                guard let self else { return }
+                self.isTiming = false
+                self.timingStatus = nil
+                if self.url == track.url { self.lyrics = timed; self.onlineMessage = nil }
+            } catch {
+                guard let self else { return }
+                self.isTiming = false
+                self.timingStatus = error.localizedDescription
+                try? await Task.sleep(for: .seconds(8))
+                if !self.isTiming { self.timingStatus = nil }
+            }
+        }
+    }
+
+    /// Swaps in a sidecar's lyrics if one has appeared and the shown lyrics
+    /// are untimed; quiet otherwise (no reload, no flicker).
+    func recheckSidecar() {
+        guard let url, lyrics?.isSynced != true, !isLoading else { return }
+        Task { [weak self] in
+            let found = await Task.detached(priority: .utility) { Self.sidecar(for: url) }.value
+            guard let self, self.url == url, let found, found.isSynced || self.lyrics == nil else { return }
+            self.lyrics = found
+            self.onlineMessage = nil
+        }
     }
 
     /// One-shot lookup for the current song, from the empty state's button.

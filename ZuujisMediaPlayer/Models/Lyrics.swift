@@ -8,6 +8,20 @@ struct LyricLine: Equatable, Identifiable {
     let id: Int
     let time: Double?
     let text: String
+    /// Per-word times from enhanced LRC (`<01:23.45>word`), when the line has
+    /// them; the words joined with spaces read as `text`.
+    var words: [LyricWord]? = nil
+
+    /// How many of this line's words have started at `time`.
+    func wordsSung(at time: Double) -> Int {
+        guard let words else { return 0 }
+        return words.lastIndex { $0.time <= time }.map { $0 + 1 } ?? 0
+    }
+}
+
+struct LyricWord: Equatable {
+    let time: Double
+    let text: String
 }
 
 /// A song's lyrics, either synced (an LRC file or LRC text in a tag: every
@@ -18,12 +32,12 @@ struct Lyrics: Equatable {
     var isSynced: Bool
 
     /// Reads LRC (`[01:23.45]text`, several stamps per line, an `[offset:ms]`
-    /// tag, enhanced `<01:23.45>` word stamps dropped) or, when no line has a
+    /// tag, enhanced `<01:23.45>` word stamps kept as `words`) or, when no line has a
     /// stamp, plain text. nil when there is nothing to show.
     static func parse(_ raw: String) -> Lyrics? {
         let text = raw.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         var offset = 0.0
-        var timed: [(time: Double, text: String)] = []
+        var timed: [(time: Double, text: String, words: [LyricWord]?)] = []
         var plain: [String] = []
 
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -53,17 +67,20 @@ struct Lyrics: Equatable {
                 if !isMetadata { plain.append(original) }
             } else {
                 let words = removingWordStamps(String(line)).trimmingCharacters(in: .whitespaces)
-                for time in stamps { timed.append((time, words)) }
+                let wordTimes = stamps.count == 1 ? wordStamps(String(line)) : nil
+                for time in stamps { timed.append((time, words, wordTimes)) }
             }
         }
 
         if !timed.isEmpty {
             // Stable by time: lines sharing a stamp keep their order.
             let sorted = timed.enumerated()
-                .map { (time: max(0, $0.element.time - offset), index: $0.offset, text: $0.element.text) }
+                .map { (time: max(0, $0.element.time - offset), index: $0.offset, text: $0.element.text,
+                        words: $0.element.words?.map { LyricWord(time: max(0, $0.time - offset), text: $0.text) }) }
                 .sorted { ($0.time, $0.index) < ($1.time, $1.index) }
-            return Lyrics(lines: sorted.enumerated().map { LyricLine(id: $0.offset, time: $0.element.time, text: $0.element.text) },
-                          isSynced: true)
+            return Lyrics(lines: sorted.enumerated().map {
+                LyricLine(id: $0.offset, time: $0.element.time, text: $0.element.text, words: $0.element.words)
+            }, isSynced: true)
         }
 
         // Plain: collapse runs of blank lines, trim the blank edges.
@@ -106,6 +123,21 @@ struct Lyrics: Equatable {
             seconds = seconds * 60 + value
         }
         return seconds
+    }
+
+    /// `<01:23.45>Some <01:24.00>words` as timed words; nil unless every word
+    /// carries a stamp.
+    private static func wordStamps(_ text: String) -> [LyricWord]? {
+        guard text.contains("<") else { return nil }
+        var words: [LyricWord] = []
+        for chunk in text.components(separatedBy: "<").dropFirst() {
+            guard let close = chunk.firstIndex(of: ">"),
+                  let time = stamp(String(chunk[..<close])) else { return nil }
+            let word = chunk[chunk.index(after: close)...].trimmingCharacters(in: .whitespaces)
+            if !word.isEmpty { words.append(LyricWord(time: time, text: word)) }
+        }
+        let leading = text.components(separatedBy: "<").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        return words.isEmpty || !leading.isEmpty ? nil : words
     }
 
     private static func removingWordStamps(_ text: String) -> String {
