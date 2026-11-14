@@ -539,6 +539,29 @@ final class PlayerEngine: ObservableObject {
         return latency.isFinite ? min(max(0, latency), 1.5) : 0
     }
 
+    /// The default output's IO buffer in milliseconds — the same figure the
+    /// system route reports (512 frames at 48 kHz is 10.7 ms), read from the
+    /// device so it exists with the route off or its input silent.
+    static func outputBufferMs() -> Double {
+        var device = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr,
+              device != kAudioObjectUnknown else { return 0 }
+        var frames: UInt32 = 0
+        size = UInt32(MemoryLayout<UInt32>.size)
+        address.mSelector = kAudioDevicePropertyBufferFrameSize
+        address.mScope = kAudioObjectPropertyScopeGlobal
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &frames) == noErr, frames > 0 else { return 0 }
+        var rate: Float64 = 0
+        size = UInt32(MemoryLayout<Float64>.size)
+        address.mSelector = kAudioDevicePropertyNominalSampleRate
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &rate) == noErr, rate > 0 else { return 0 }
+        return (Double(frames) / rate * 10_000).rounded() / 10
+    }
+
     /// Seconds into the current track. Polled by the UI rather than published:
     /// a published position would redraw every view that observes the player on
     /// each tick.
@@ -935,7 +958,7 @@ final class PlayerEngine: ObservableObject {
                 // route off it shows the player's own output delay instead.
                 MainActor.assumeIsolated {
                     guard let self, self.equalizer?.isRunning != true else { return }
-                    meters?.setLatency((self.outputLatency * 10_000).rounded() / 10)
+                    meters?.setLatency(Self.outputBufferMs())
                 }
             }
         }

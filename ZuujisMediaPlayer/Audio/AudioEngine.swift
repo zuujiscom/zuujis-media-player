@@ -939,7 +939,12 @@ final class AudioEngine: NSObject, ObservableObject {
     }
 
     private func updateMeters() {
-        guard let buffer = renderer.copyLatestFrames() else { return }
+        // No frames while the system audio is silent (this app's own output is
+        // not captured), but the chip should still read the buffer length.
+        guard let buffer = renderer.copyLatestFrames() else {
+            meters.setLatency(steadyLatency(renderer.latencyMs > 0 ? renderer.latencyMs : PlayerEngine.outputBufferMs()))
+            return
+        }
         meters.publishRoute(MeterSnapshot(
             spectrum: fftAnalyzer.analyze(buffer: buffer),
             level: min(1.0, buffer.rms * 3.0),
