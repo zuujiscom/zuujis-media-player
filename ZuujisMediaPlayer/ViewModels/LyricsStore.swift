@@ -31,7 +31,7 @@ final class LyricsStore: ObservableObject {
     @Published var onlineLookup: Bool = UserDefaults.standard.bool(forKey: "lyricsOnlineLookup") {
         didSet {
             UserDefaults.standard.set(onlineLookup, forKey: "lyricsOnlineLookup")
-            if onlineLookup, lyrics == nil, !isLoading, let track = currentTrack { load(track) }
+            if onlineLookup, lyrics?.isSynced != true, !isLoading, let track = currentTrack { load(track) }
         }
     }
     /// This song's sync adjustment in seconds: positive shows each line sooner
