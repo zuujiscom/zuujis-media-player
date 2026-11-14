@@ -288,6 +288,22 @@ struct ZuujisMediaPlayerApp: App {
                     Text("Track").tag(PlaybackQueue.Repeat.one)
                 }
 
+                Menu("Sleep Timer") {
+                    Toggle("Off", isOn: Binding(get: { player.sleepTimer == .off },
+                                                set: { _ in player.cancelSleepTimer() }))
+                    Divider()
+                    ForEach(PlayerEngine.sleepChoices, id: \.self) { minutes in
+                        Button("Pause in \(minutes) Minutes") { player.setSleepTimer(minutes: minutes) }
+                    }
+                    Toggle("Pause at End of Current Track", isOn: Binding(
+                        get: { player.sleepTimer == .endOfTrack },
+                        set: { $0 ? player.sleepAtEndOfTrack() : player.cancelSleepTimer() }))
+                    if case .until(let date) = player.sleepTimer {
+                        Divider()
+                        Text("Pauses at \(date.formatted(date: .omitted, time: .shortened))")
+                    }
+                }
+
                 Divider()
 
                 Button(player.track.map { playlists.isFavorite($0.url.path) } == true
@@ -550,6 +566,7 @@ struct ZuujisMediaPlayerApp: App {
             library.saveNow()
             playlists.saveNow()
             player.queue.saveNow()
+            player.saveResumePoint()
         }
         login.enableOnFirstRun()
         if presetLink == nil {

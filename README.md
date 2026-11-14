@@ -202,6 +202,16 @@ system route, so it never processes your other audio twice.
 - The **Visualizer** button in the header opens the visualizer in its own
   window (⇧⌘V).
 
+### Sleep timer and resume
+
+**Playback → Sleep Timer** pauses the music in 15, 30, 45, 60 or 90 minutes
+(fading out over the last few seconds), or at the end of the current track,
+which leaves the next song in the bar ready to play. Choose **Off** to cancel.
+
+If a song was playing or paused when you quit, the next launch shows it at
+the same position, and Play carries on from there. Playing anything else
+first starts it from the beginning as usual.
+
 ### Speed
 
 The speed button beside the volume shows the current speed (1× normally,

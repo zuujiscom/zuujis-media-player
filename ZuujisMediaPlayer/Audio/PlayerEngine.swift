@@ -75,6 +75,78 @@ final class PlayerEngine: ObservableObject {
     }
     private static let volumeKey = "playerVolume"
 
+    // MARK: - Sleep timer
+
+    /// Pauses playback later: at a time (with a short fade), or when the
+    /// current track ends. Never persisted — a relaunch starts with it off.
+    enum SleepTimer: Equatable { case off, until(Date), endOfTrack }
+
+    @Published private(set) var sleepTimer: SleepTimer = .off
+    static let sleepChoices = [15, 30, 45, 60, 90]
+    private static let sleepFade: Double = 6
+    private var sleepTask: Task<Void, Never>?
+
+    func setSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        let seconds = Double(minutes) * 60
+        sleepTimer = .until(Date().addingTimeInterval(seconds))
+        sleepTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, seconds - Self.sleepFade)))
+            guard !Task.isCancelled, let self else { return }
+            // Fade on the node, not `volume`: the saved volume must not move.
+            let steps = 30
+            for step in 1...steps where self.state == .playing {
+                self.player.volume = self.volume * Float(steps - step) / Float(steps)
+                try? await Task.sleep(for: .seconds(Self.sleepFade / Double(steps)))
+                if Task.isCancelled {
+                    self.player.volume = self.volume
+                    return
+                }
+            }
+            self.pause()
+            self.player.volume = self.volume
+            self.sleepTimer = .off
+            self.sleepTask = nil
+        }
+    }
+
+    /// The next track is not pre-scheduled while this is set, so nothing of it
+    /// is heard; `segmentFinished` moves on to it, paused.
+    func sleepAtEndOfTrack() {
+        cancelSleepTimer()
+        sleepTimer = .endOfTrack
+        reconcileWithQueue()
+    }
+
+    func cancelSleepTimer() {
+        let wasEndOfTrack = sleepTimer == .endOfTrack
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepTimer = .off
+        player.volume = volume
+        // Queue the next track behind the playing one again: no re-deal, no gap.
+        if wasEndOfTrack, state != .stopped { scheduleNext(token: session) }
+    }
+
+    // MARK: - Resume after a relaunch
+
+    /// Where the song that was playing at quit had got to. Offered once, to
+    /// the first Play of that same song; anything else played first drops it.
+    private var resumePoint: (path: String, seconds: Double)?
+    private static let resumeKey = "playerResumePoint"
+
+    /// Called on quit. A stopped player leaves whatever is stored alone, so a
+    /// point that was never used survives another relaunch.
+    func saveResumePoint() {
+        guard state != .stopped, let track else { return }
+        UserDefaults.standard.set(["path": track.url.path, "seconds": currentTime()], forKey: Self.resumeKey)
+    }
+
+    private func dropResumePoint() {
+        resumePoint = nil
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey)
+    }
+
     // MARK: - Playback speed
 
     /// The speeds offered as quick picks; the slider covers the whole range.
@@ -306,6 +378,12 @@ final class PlayerEngine: ObservableObject {
               let file = try? AVAudioFile(forReading: item.url) else { return }
         track = Self.makeInfo(for: file, item: item)
         loadMetadata(for: item.url)
+        if resumePoint == nil,
+           let saved = UserDefaults.standard.dictionary(forKey: Self.resumeKey),
+           let path = saved["path"] as? String, let seconds = saved["seconds"] as? Double,
+           path == item.url.path {
+            resumePoint = (path, seconds)
+        }
     }
 
     // MARK: - Transport
@@ -362,11 +440,20 @@ final class PlayerEngine: ObservableObject {
 
     /// Unreadable files are skipped (once around the queue at most), so one bad
     /// file cannot stall an album.
-    private func playItem(_ id: QueueItem.ID, attempts: Int) {
+    private func playItem(_ id: QueueItem.ID, attempts: Int, resuming: Bool = false) {
         guard let item = queue.item(withID: id) else { return }
+        let resumeAt = resuming && resumePoint?.path == item.url.path ? resumePoint?.seconds : nil
+        dropResumePoint()
         queue.setCurrent(id)
         do {
-            let segment = try makeSegment(for: item, fileStart: 0, startSample: 0)
+            var segment = try makeSegment(for: item, fileStart: 0, startSample: 0)
+            // Pick up where the last launch left off, unless that was the very
+            // start or the last moments of the song.
+            let rate = segment.file.processingFormat.sampleRate
+            if let resumeAt, resumeAt > 5, resumeAt < Double(segment.file.length) / rate - 10 {
+                segment.fileStart = AVAudioFramePosition(resumeAt * rate)
+                segment.frames = segment.file.length - segment.fileStart
+            }
             try prepareGraph(for: segment.file.processingFormat)
             track = segment.info
             errorMessage = nil
@@ -387,7 +474,7 @@ final class PlayerEngine: ObservableObject {
         case .playing: pause()
         case .paused: resume()
         case .stopped:
-            if let id = queue.currentID ?? queue.items.first?.id { play(id) }
+            if let id = queue.currentID ?? queue.items.first?.id { playItem(id, attempts: 0, resuming: true) }
         }
     }
 
@@ -456,6 +543,8 @@ final class PlayerEngine: ObservableObject {
     /// a published position would redraw every view that observes the player on
     /// each tick.
     func currentTime() -> Double {
+        // Not started since launch: show where Play will pick up.
+        if state == .stopped, let resumePoint { return resumePoint.seconds }
         guard let rate = graphFormat?.sampleRate, rate > 0 else { return 0 }
         return Double(currentFrame()) / rate
     }
@@ -570,6 +659,7 @@ final class PlayerEngine: ObservableObject {
     /// one and it can join without a rebuild.
     private func scheduleNext(token: Int) {
         guard segments.count == 1, let last = segments.last,
+              sleepTimer != .endOfTrack,
               let item = queue.itemAfterCurrent(),
               let graphFormat else { return }
 
@@ -604,6 +694,16 @@ final class PlayerEngine: ObservableObject {
             loadMetadata(for: playing.info.url)
             scheduleNext(token: token)
             timelineChanged.send()
+        } else if sleepTimer == .endOfTrack {
+            // Stop here, with the next song in the bar ready for Play.
+            sleepTimer = .off
+            let upNext = queue.itemAfterCurrent()
+            finish()
+            if let upNext {
+                queue.setCurrent(upNext.id)
+                track = nil
+                restoreCurrentTrack()
+            }
         } else if let item = queue.itemAfterCurrent() {
             // Nothing was pre-scheduled: a different format, or an unreadable file.
             playItem(item.id, attempts: 0)
@@ -626,7 +726,7 @@ final class PlayerEngine: ObservableObject {
             return
         }
 
-        let wanted = queue.itemAfterCurrent()?.id
+        let wanted = sleepTimer == .endOfTrack ? nil : queue.itemAfterCurrent()?.id
         let scheduled = segments.count > 1 ? segments[1].itemID : nil
         guard wanted != scheduled, wanted != unschedulableNext || scheduled != nil else { return }
 
