@@ -100,14 +100,12 @@ enum LyricsAligner {
                 while first - start < firstSlot[line], start - 1 > previousEnd,
                       heard[start].time - heard[start - 1].time < 2.5,
                       heard[first].time - heard[start - 1].time < 4 { start -= 1 }
-                if start == first, firstSlot[line] > 0 {
-                    // The opening words were not recognised at all: back up
-                    // about a syllable-pair per word, not past the line before.
-                    let floor = previousEnd >= 0 ? heard[previousEnd].time + 0.3 : 0
-                    starts[line] = max(floor, heard[first].time - 0.32 * Double(firstSlot[line]))
-                } else {
-                    starts[line] = heard[start].time
-                }
+                // Opening words not heard at all (fewer stepped-back words than
+                // words before the anchor): back up about 0.32 s for each,
+                // not past the line before.
+                let missing = firstSlot[line] - (first - start)
+                let floor = previousEnd >= 0 ? heard[previousEnd].time + 0.3 : 0
+                starts[line] = missing > 0 ? max(floor, heard[start].time - 0.32 * Double(missing)) : heard[start].time
                 previousEnd = max(previousEnd, lastHeard[line] ?? first)
             } else if previousEnd + 1 < nextMatched {
                 starts[line] = heard[previousEnd + 1].time
@@ -171,7 +169,7 @@ enum LyricsAligner {
     /// recognised there, within `maxShift` of its stated time after the
     /// song's typical offset is allowed for. Lines with nothing recognisable,
     /// and empty break lines, keep their stated time plus that offset.
-    static let maxShift = 4.0
+    static let maxShift = 6.0
 
     static func alignWords(timedLines: [(time: Double, text: String)], heard: [Word]) -> Timing {
         let texts = timedLines.map(\.text)

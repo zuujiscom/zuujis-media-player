@@ -65,7 +65,8 @@ enum LyricsTimer {
     /// Bumped when the timing method improves: older files are ignored, so
     /// those songs show their usual lyrics again and are re-timed by the next
     /// album or library run. 2: line times follow what is actually sung.
-    nonisolated static let wordsRevision = 2
+    /// 3: lines may move up to 6 s; partly heard openings back up.
+    nonisolated static let wordsRevision = 3
 
     /// The saved word timing for `song`, if it was made by the current method.
     nonisolated static func currentWordsText(for song: URL) -> String? {

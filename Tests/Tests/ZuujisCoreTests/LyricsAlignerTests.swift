@@ -138,3 +138,15 @@ final class LyricsAlignerMishearingTests: XCTestCase {
         XCTAssertGreaterThan(start, 120)
     }
 }
+
+final class LyricsAlignerPartlyHeardTests: XCTestCase {
+    func testPartlyHeardOpeningBacksUpForTheRest() {
+        // "The second hand unwinds" heard as "had unwind": "had" stands for
+        // "hand", so "The second" came before it.
+        let lines = ["I fall behind", "The second hand unwinds"]
+        let timing = LyricsAligner.align(lines: lines, heard: [
+            (34.7, "fall"), (35.2, "behind"), (39.48, "had"), (39.78, "unwind"),
+        ].map { LyricsAligner.Word(time: $0.0, text: $0.1) })
+        XCTAssertEqual(timing.lines[1] ?? 0, 39.48 - 0.64, accuracy: 0.001)
+    }
+}
