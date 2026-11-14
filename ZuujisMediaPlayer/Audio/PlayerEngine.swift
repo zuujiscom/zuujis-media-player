@@ -1224,17 +1224,26 @@ enum OnlineCoverArt {
         // artists' singles above a big act's own albums, so if that finds no
         // match, read the artist's whole discography and match within it.
         var artURL: String?
-        if let results = await search(["term": "\(artist) \(plainTitle(name))", "entity": byAlbum ? "album" : "song", "limit": "25"]) {
-            artURL = best(results, artist: artist, name: name, field: byAlbum ? "collectionName" : "trackName", partial: false)
-        } else {
+        guard let results = await search(["term": "\(artist) \(plainTitle(name))", "entity": byAlbum ? "album" : "song", "limit": "25"]) else {
             return nil // offline: ask again later
         }
-        if artURL == nil, byAlbum,
-           let artists = await search(["term": artist, "entity": "musicArtist", "limit": "5"]),
-           let id = artists.first(where: { norm($0["artistName"] as? String) == norm(artist) })?["artistId"] as? Int,
-           let albums = await request("https://itunes.apple.com/lookup", ["id": String(id), "entity": "album", "limit": "200"]) {
-            artURL = best(albums.filter { $0["wrapperType"] as? String == "collection" },
-                          artist: artist, name: name, field: "collectionName", partial: true)
+        let field = byAlbum ? "collectionName" : "trackName"
+        artURL = best(results, artist: artist, name: name, field: field, partial: false)
+        if artURL == nil, let artists = await search(["term": artist, "entity": "musicArtist", "limit": "5"]) {
+            // The store's own artist search knows aliases ("Tupac" is filed as
+            // "2Pac"), so its top hit is trusted alongside exact name matches,
+            // with the title still required to match.
+            var ids = artists.filter { norm($0["artistName"] as? String) == norm(artist) }.compactMap { $0["artistId"] as? Int }
+            if let top = artists.first?["artistId"] as? Int, !ids.contains(top) { ids.append(top) }
+            artURL = best(results, artist: artist, name: name, field: field, partial: false, artistIDs: Set(ids))
+            if artURL == nil, byAlbum {
+                for id in ids.prefix(2) {
+                    guard let albums = await request("https://itunes.apple.com/lookup", ["id": String(id), "entity": "album", "limit": "200"]) else { continue }
+                    artURL = best(albums.filter { $0["wrapperType"] as? String == "collection" },
+                                  artist: artist, name: name, field: field, partial: true, artistIDs: [id])
+                    if artURL != nil { break }
+                }
+            }
         }
         var big = artURL.flatMap { URL(string: $0.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) }
         // Not every album is in the (US) iTunes store; MusicBrainz's Cover Art
@@ -1318,13 +1327,15 @@ enum OnlineCoverArt {
     /// edition first (not a deluxe box set); failing that, one title starting
     /// with the other ("S&M" for "S&M with the San Francisco Symphony"), only
     /// within the artist's own discography.
-    static func best(_ results: [[String: Any]], artist: String, name: String, field: String, partial allowPartial: Bool) -> String? {
+    static func best(_ results: [[String: Any]], artist: String, name: String, field: String,
+                     partial allowPartial: Bool, artistIDs: Set<Int> = []) -> String? {
         let wantArtist = norm(artist), want = baseTitle(name)
         guard !want.isEmpty else { return nil }
         let mine = results.filter { r in
             let a = norm(r["artistName"] as? String)
-            return !a.isEmpty && (a == wantArtist || a.hasPrefix(wantArtist) || wantArtist.hasPrefix(a))
-                && r["artworkUrl100"] is String
+            let named = !a.isEmpty && (a == wantArtist || a.hasPrefix(wantArtist) || wantArtist.hasPrefix(a))
+            let known = (r["artistId"] as? Int).map(artistIDs.contains) ?? false
+            return (named || known) && r["artworkUrl100"] is String
         }
         func title(_ r: [String: Any]) -> String { r[field] as? String ?? "" }
         let exact = mine.filter { baseTitle(title($0)) == want }
