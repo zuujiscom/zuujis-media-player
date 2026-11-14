@@ -1182,8 +1182,9 @@ enum CoverArt {
 
 /// Only if the user turns it on: finds a cover online when the file has none
 /// embedded and no cover image sits beside it. Asks the iTunes Search API
-/// (no account or key), sending the artist and album (or title) to
-/// itunes.apple.com, which is why it is off by default. Covers are cached
+/// (no account or key), then MusicBrainz's Cover Art Archive for albums iTunes
+/// lacks, sending the artist and album (or title) to itunes.apple.com and
+/// musicbrainz.org, which is why it is off by default. Covers are cached
 /// per album in Application Support (never written beside the music), and a
 /// miss is remembered for this run so each album is asked about once.
 enum OnlineCoverArt {
@@ -1199,7 +1200,7 @@ enum OnlineCoverArt {
         return dir
     }
 
-    private static func norm(_ text: String?) -> String {
+    static func norm(_ text: String?) -> String {
         (text ?? "").lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
@@ -1219,31 +1220,27 @@ enum OnlineCoverArt {
         let key = cache.lastPathComponent
         if missLock.withLock({ missed.contains(key) }) { return nil }
 
-        var parts = URLComponents(string: "https://itunes.apple.com/search")!
-        parts.queryItems = [
-            URLQueryItem(name: "term", value: "\(artist) \(name)"),
-            URLQueryItem(name: "media", value: "music"),
-            URLQueryItem(name: "entity", value: byAlbum ? "album" : "song"),
-            URLQueryItem(name: "limit", value: "10"),
-        ]
-        guard let url = parts.url else { return nil }
-        var req = URLRequest(url: url, timeoutInterval: 10)
-        req.setValue("ZuujisMediaPlayer (https://github.com/zuujiscom/zuujis-media-player)", forHTTPHeaderField: "User-Agent")
-        guard let (data, response) = try? await URLSession.shared.data(for: req) else { return nil } // offline: ask again later
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let results = json["results"] as? [[String: Any]] else { return nil }
-
-        // Only accept a result whose artist and album (or song) actually match,
-        // so a loose search hit never puts the wrong cover on a song.
-        let wantArtist = norm(artist), wantName = norm(name)
-        func close(_ a: String, _ b: String) -> Bool { !a.isEmpty && !b.isEmpty && (a == b || a.contains(b) || b.contains(a)) }
-        let match = results.first { r in
-            close(norm(r["artistName"] as? String), wantArtist)
-                && close(norm(r[byAlbum ? "collectionName" : "trackName"] as? String), wantName)
+        // The direct search first; it often ranks tributes, karaoke and other
+        // artists' singles above a big act's own albums, so if that finds no
+        // match, read the artist's whole discography and match within it.
+        var artURL: String?
+        if let results = await search(["term": "\(artist) \(name)", "entity": byAlbum ? "album" : "song", "limit": "25"]) {
+            artURL = best(results, artist: artist, name: name, field: byAlbum ? "collectionName" : "trackName", partial: false)
+        } else {
+            return nil // offline: ask again later
         }
-        guard let small = match?["artworkUrl100"] as? String,
-              let big = URL(string: small.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) else {
+        if artURL == nil, byAlbum,
+           let artists = await search(["term": artist, "entity": "musicArtist", "limit": "5"]),
+           let id = artists.first(where: { norm($0["artistName"] as? String) == norm(artist) })?["artistId"] as? Int,
+           let albums = await request("https://itunes.apple.com/lookup", ["id": String(id), "entity": "album", "limit": "200"]) {
+            artURL = best(albums.filter { $0["wrapperType"] as? String == "collection" },
+                          artist: artist, name: name, field: "collectionName", partial: true)
+        }
+        var big = artURL.flatMap { URL(string: $0.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) }
+        // Not every album is in the (US) iTunes store; MusicBrainz's Cover Art
+        // Archive covers much of the rest.
+        if big == nil, byAlbum { big = await musicBrainzCover(artist: artist, album: name) }
+        guard let big else {
             missLock.withLock { _ = missed.insert(key) }
             return nil
         }
@@ -1252,5 +1249,86 @@ enum OnlineCoverArt {
               NSImage(data: image) != nil else { return nil }
         try? image.write(to: cache, options: .atomic)
         return image
+    }
+
+    /// The Cover Art Archive's front cover of the MusicBrainz release group
+    /// whose artist and title match, if it has one.
+    private static func musicBrainzCover(artist: String, album: String) async -> URL? {
+        func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\"", with: "") + "\"" }
+        guard let groups = await request("https://musicbrainz.org/ws/2/release-group/", [
+            "fmt": "json", "limit": "10",
+            "query": "releasegroup:\(quoted(album)) AND artist:\(quoted(artist))",
+        ], results: "release-groups") else { return nil }
+        let want = baseTitle(album), wantArtist = norm(artist)
+        for group in groups {
+            guard baseTitle(group["title"] as? String) == want, let id = group["id"] as? String else { continue }
+            let credits = (group["artist-credit"] as? [[String: Any]] ?? []).map { norm($0["name"] as? String) }
+            guard credits.contains(where: { $0 == wantArtist || $0.hasPrefix(wantArtist) || wantArtist.hasPrefix($0) }) else { continue }
+            // A 404 means that group has no cover; try the next match.
+            for size in ["front-1200", "front"] {
+                guard let url = URL(string: "https://coverartarchive.org/release-group/\(id)/\(size)") else { continue }
+                var req = URLRequest(url: url, timeoutInterval: 10)
+                req.httpMethod = "HEAD"
+                if let (_, response) = try? await URLSession.shared.data(for: req),
+                   (response as? HTTPURLResponse)?.statusCode == 200 { return url }
+            }
+        }
+        return nil
+    }
+
+    private static func search(_ items: [String: String]) async -> [[String: Any]]? {
+        await request("https://itunes.apple.com/search", items.merging(["media": "music"]) { a, _ in a })
+    }
+
+    /// The `results` of an iTunes Search/Lookup call; nil only when the request failed.
+    private static func request(_ base: String, _ items: [String: String], results field: String = "results") async -> [[String: Any]]? {
+        var parts = URLComponents(string: base)!
+        parts.queryItems = items.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = parts.url else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("ZuujisMediaPlayer (https://github.com/zuujiscom/zuujis-media-player)", forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json[field] as? [[String: Any]] ?? []
+    }
+
+    /// A title without the store's edition labels: "Kill 'Em All (Remastered)",
+    /// "Beyond Magnetic - EP" and "Garage Inc." compare as "killemall",
+    /// "beyondmagnetic" and "garageinc".
+    static func baseTitle(_ text: String?) -> String {
+        var t = text ?? ""
+        for (open, close) in [("(", ")"), ("[", "]")] {
+            while let a = t.range(of: open), let b = t.range(of: close, range: a.upperBound..<t.endIndex) {
+                t.removeSubrange(a.lowerBound..<b.upperBound)
+            }
+        }
+        for suffix in [" - Single", " - EP"] where t.hasSuffix(suffix) { t = String(t.dropLast(suffix.count)) }
+        return norm(t)
+    }
+
+    /// The artwork URL of the result that is this artist's release of this
+    /// name: the same title once edition labels are gone wins, the plainest
+    /// edition first (not a deluxe box set); failing that, one title starting
+    /// with the other ("S&M" for "S&M with the San Francisco Symphony"), only
+    /// within the artist's own discography.
+    static func best(_ results: [[String: Any]], artist: String, name: String, field: String, partial allowPartial: Bool) -> String? {
+        let wantArtist = norm(artist), want = baseTitle(name)
+        guard !want.isEmpty else { return nil }
+        let mine = results.filter { r in
+            let a = norm(r["artistName"] as? String)
+            return !a.isEmpty && (a == wantArtist || a.hasPrefix(wantArtist) || wantArtist.hasPrefix(a))
+                && r["artworkUrl100"] is String
+        }
+        func title(_ r: [String: Any]) -> String { r[field] as? String ?? "" }
+        let exact = mine.filter { baseTitle(title($0)) == want }
+            .min { title($0).count < title($1).count }
+        if let exact { return exact["artworkUrl100"] as? String }
+        guard allowPartial else { return nil }
+        let partial = mine.filter { r in
+            let b = baseTitle(title(r))
+            return min(b.count, want.count) >= 2 && (b.hasPrefix(want) || want.hasPrefix(b))
+        }.min { abs(baseTitle(title($0)).count - want.count) < abs(baseTitle(title($1)).count - want.count) }
+        return partial?["artworkUrl100"] as? String
     }
 }

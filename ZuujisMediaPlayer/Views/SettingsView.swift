@@ -1274,7 +1274,7 @@ private struct GeneralSettingsPane: View {
 
         SettingsGroup(title: "Album Art", symbol: "photo") {
             SwitchRow(title: "Look up missing album art online",
-                      detail: "Asks itunes.apple.com, sending the song's artist and album. Covers are saved in Application Support. Off, nothing leaves this Mac.",
+                      detail: "Asks itunes.apple.com, then MusicBrainz, sending the song's artist and album. Covers are saved in Application Support. Off, nothing leaves this Mac.",
                       isOn: Binding(get: { onlineArtwork },
                                     set: { onlineArtwork = $0; if $0 { player.refreshArtwork() } }))
         }
