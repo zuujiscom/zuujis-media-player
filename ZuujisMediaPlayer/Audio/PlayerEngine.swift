@@ -1030,6 +1030,13 @@ final class PlayerEngine: ObservableObject {
         )
     }
 
+    /// Looks the playing song's cover up again, e.g. after online lookup is
+    /// turned on while a song without embedded art is playing.
+    func refreshArtwork() {
+        guard let track, track.artwork == nil else { return }
+        loadMetadata(for: track.url)
+    }
+
     /// Cover art, plus tags the queue has not loaded yet, once they load. The
     /// queue's own title stands in until then.
     private func loadMetadata(for url: URL) {
@@ -1038,7 +1045,13 @@ final class PlayerEngine: ObservableObject {
             // Vorbis comments (AVFoundation ignores them). The cover has its
             // own reader for the same reason: see `CoverArt`.
             let meta = await TrackMetadata.read(url)
-            let artData = await CoverArt.data(for: url)
+            var artData = await CoverArt.data(for: url)
+            if artData == nil, OnlineCoverArt.enabled {
+                let artist = meta.artist ?? self?.track?.artist
+                let album = meta.album ?? self?.track?.album
+                artData = await OnlineCoverArt.fetch(artist: artist, album: album,
+                                                     title: meta.title ?? self?.track?.title)
+            }
 
             guard let self, self.track?.url == url else { return }
             if let title = meta.title, !title.isEmpty { self.track?.title = title }
@@ -1163,5 +1176,81 @@ enum CoverArt {
         let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size > 0, size < 32 * 1024 * 1024 else { return nil }
         return try? Data(contentsOf: file)
+    }
+}
+
+
+/// Only if the user turns it on: finds a cover online when the file has none
+/// embedded and no cover image sits beside it. Asks the iTunes Search API
+/// (no account or key), sending the artist and album (or title) to
+/// itunes.apple.com, which is why it is off by default. Covers are cached
+/// per album in Application Support (never written beside the music), and a
+/// miss is remembered for this run so each album is asked about once.
+enum OnlineCoverArt {
+    static let defaultsKey = "artworkOnlineLookup"
+    static var enabled: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
+
+    private static let missLock = NSLock()
+    nonisolated(unsafe) private static var missed = Set<String>()
+
+    private static var cacheFolder: URL {
+        let dir = AppPaths.support.appendingPathComponent("Artwork", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private static func norm(_ text: String?) -> String {
+        (text ?? "").lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    static func cacheFile(artist: String, album: String) -> URL {
+        var hash: UInt64 = 5381
+        for byte in (norm(artist) + "|" + norm(album)).utf8 { hash = (hash &* 33) ^ UInt64(byte) }
+        return cacheFolder.appendingPathComponent(String(hash, radix: 16) + ".jpg")
+    }
+
+    static func fetch(artist: String?, album: String?, title: String?) async -> Data? {
+        guard let artist, !artist.isEmpty else { return nil }
+        // Without an album, a single's cover found by its title is the best guess.
+        let byAlbum = !(album ?? "").isEmpty
+        guard let name = byAlbum ? album : title, !name.isEmpty else { return nil }
+        let cache = cacheFile(artist: artist, album: byAlbum ? name : "track:" + name)
+        if let data = try? Data(contentsOf: cache), NSImage(data: data) != nil { return data }
+        let key = cache.lastPathComponent
+        if missLock.withLock({ missed.contains(key) }) { return nil }
+
+        var parts = URLComponents(string: "https://itunes.apple.com/search")!
+        parts.queryItems = [
+            URLQueryItem(name: "term", value: "\(artist) \(name)"),
+            URLQueryItem(name: "media", value: "music"),
+            URLQueryItem(name: "entity", value: byAlbum ? "album" : "song"),
+            URLQueryItem(name: "limit", value: "10"),
+        ]
+        guard let url = parts.url else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("ZuujisMediaPlayer (https://github.com/zuujiscom/zuujis-media-player)", forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else { return nil } // offline: ask again later
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else { return nil }
+
+        // Only accept a result whose artist and album (or song) actually match,
+        // so a loose search hit never puts the wrong cover on a song.
+        let wantArtist = norm(artist), wantName = norm(name)
+        func close(_ a: String, _ b: String) -> Bool { !a.isEmpty && !b.isEmpty && (a == b || a.contains(b) || b.contains(a)) }
+        let match = results.first { r in
+            close(norm(r["artistName"] as? String), wantArtist)
+                && close(norm(r[byAlbum ? "collectionName" : "trackName"] as? String), wantName)
+        }
+        guard let small = match?["artworkUrl100"] as? String,
+              let big = URL(string: small.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) else {
+            missLock.withLock { _ = missed.insert(key) }
+            return nil
+        }
+        guard let (image, imageResponse) = try? await URLSession.shared.data(from: big),
+              (imageResponse as? HTTPURLResponse)?.statusCode == 200,
+              NSImage(data: image) != nil else { return nil }
+        try? image.write(to: cache, options: .atomic)
+        return image
     }
 }

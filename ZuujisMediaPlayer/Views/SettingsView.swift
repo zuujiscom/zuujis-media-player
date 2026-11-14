@@ -1212,6 +1212,7 @@ private struct NowPlayingWidgetMock: View {
 private struct GeneralSettingsPane: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var lyrics: LyricsStore
+    @AppStorage(OnlineCoverArt.defaultsKey) private var onlineArtwork = false
     @EnvironmentObject private var login: LaunchAtLogin
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
@@ -1269,6 +1270,13 @@ private struct GeneralSettingsPane: View {
                     .opacity(lyrics.recheckStatus == nil ? 1 : 0.4)
                     .disabled(lyrics.recheckStatus != nil)
             }
+        }
+
+        SettingsGroup(title: "Album Art", symbol: "photo") {
+            SwitchRow(title: "Look up missing album art online",
+                      detail: "Asks itunes.apple.com, sending the song's artist and album. Covers are saved in Application Support. Off, nothing leaves this Mac.",
+                      isOn: Binding(get: { onlineArtwork },
+                                    set: { onlineArtwork = $0; if $0 { player.refreshArtwork() } }))
         }
 
         SettingsGroup(title: "Output", symbol: "hifispeaker") {

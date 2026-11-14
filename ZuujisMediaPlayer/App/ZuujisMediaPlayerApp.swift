@@ -97,6 +97,7 @@ struct ZuujisMediaPlayerApp: App {
     @AppStorage(Panels.library) private var showLibrary = true
     @AppStorage(Panels.lyrics) private var showLyrics = true
     @AppStorage(Panels.eq) private var eqPanel = Panels.response
+    @AppStorage(OnlineCoverArt.defaultsKey) private var onlineArtwork = false
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
     var body: some Scene {
@@ -318,6 +319,9 @@ struct ZuujisMediaPlayerApp: App {
                 Toggle("Look Up Missing Lyrics Online (LRCLIB)", isOn: $lyrics.onlineLookup)
                 Button(lyrics.recheckStatus ?? "Re-check Saved Online Lyrics") { lyrics.recheckSaved() }
                     .disabled(lyrics.recheckStatus != nil)
+                Toggle("Look Up Missing Album Art Online (iTunes)", isOn: Binding(
+                    get: { onlineArtwork },
+                    set: { onlineArtwork = $0; if $0 { player.refreshArtwork() } }))
                 Toggle("Match Output Rate to Each Track", isOn: Binding(
                     get: { player.matchSampleRate }, set: { player.matchSampleRate = $0 }))
                 Toggle("Exclusive Output", isOn: Binding(
