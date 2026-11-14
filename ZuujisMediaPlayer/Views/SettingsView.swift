@@ -1213,6 +1213,7 @@ private struct GeneralSettingsPane: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var lyrics: LyricsStore
     @AppStorage(OnlineCoverArt.defaultsKey) private var onlineArtwork = false
+    @AppStorage(ArtworkWash.storageKey) private var artworkTint = false
     @EnvironmentObject private var login: LaunchAtLogin
     @AppStorage(ThemePalette.storageKey) private var themeID = ThemePalette.midnight.id
 
@@ -1247,6 +1248,9 @@ private struct GeneralSettingsPane: View {
                     .buttonStyle(.plain)
                 }
             }
+            SwitchRow(title: "Tint the window with the album cover",
+                      detail: "Washes the playing song's cover colours over the theme's background.",
+                      isOn: $artworkTint)
         }
 
         SettingsGroup(title: "Startup", symbol: "power") {

@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// The Now Playing stage under the header: the cover and what is playing on
 /// the left, the transport over the scrubber in the middle, the output
 /// switches and volume on the right. The live spectrum rises behind it, and
-/// the window's backdrop (`ArtworkWash`) is the cover itself, blurred.
+/// the cover can tint the window's backdrop (`ArtworkWash`, off by default).
 struct PlayerBar: View {
     @EnvironmentObject private var player: PlayerEngine
 
@@ -377,12 +377,15 @@ struct PlayButton: View {
 /// blurred until only its colours are left, washing down from the top of the
 /// window and gone by about two thirds of the way. It sits over
 /// `AmbientBackground`; without a cover that shows alone.
+/// Off by default (`artworkTint`): the theme's own colours stay as chosen.
 struct ArtworkWash: View {
+    static let storageKey = "artworkTint"
     @EnvironmentObject private var player: PlayerEngine
+    @AppStorage(ArtworkWash.storageKey) private var enabled = false
 
     var body: some View {
         ZStack {
-            if let image = player.track?.artwork {
+            if enabled, let image = player.track?.artwork {
                 // `Color.clear.overlay` pins the layout to the window: a
                 // filled image otherwise reports its own, larger size.
                 Color.clear
