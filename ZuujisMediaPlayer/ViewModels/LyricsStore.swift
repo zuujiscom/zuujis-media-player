@@ -215,7 +215,7 @@ final class LyricsStore: ObservableObject {
             var done = 0, skipped = 0, failed = 0
             for (index, song) in songs.enumerated() {
                 if Task.isCancelled { break }
-                if FileManager.default.fileExists(atPath: LyricsTimer.wordsFile(for: song.url).path) { skipped += 1; continue }
+                if LyricsTimer.currentWordsText(for: song.url) != nil { skipped += 1; continue }
                 var lyrics = await Self.find(for: song.url)
                 if lyrics?.isSynced != true, useOnline, let artist = song.artist, !artist.isEmpty {
                     let asked = Query(path: song.url.path, title: Self.withoutArtist(song.title, artist: artist),
@@ -473,7 +473,7 @@ final class LyricsStore: ObservableObject {
 
     /// The app's own word-timed copy ("Time These Lyrics"), if one was made.
     nonisolated static func wordTimed(for url: URL) -> Lyrics? {
-        guard let text = try? String(contentsOf: LyricsTimer.wordsFile(for: url), encoding: .utf8),
+        guard let text = LyricsTimer.currentWordsText(for: url),
               let lyrics = Lyrics.parse(text), lyrics.isSynced else { return nil }
         return lyrics
     }

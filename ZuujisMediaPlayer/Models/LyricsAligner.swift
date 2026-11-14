@@ -21,9 +21,8 @@ enum LyricsAligner {
         var lines: [Double?]
         /// Each line's words (split on spaces) with their start times.
         var words: [[LyricWord]]
-        /// The times are final: `lrc` writes them as they are (word timing
-        /// over known line times, which must not move).
-        var alreadyLed = false
+        /// Which lines had sung words recognised (the rest were estimated).
+        var heard: [Bool] = []
     }
 
     /// Times every line and word. A word the recognizer heard takes its time;
@@ -68,13 +67,24 @@ enum LyricsAligner {
             else { j += 1 }
         }
 
+        // Each line's matches in order: (word slot, heard index).
+        var matches = lines.map { _ in [(slot: Int, heard: Int)]() }
+        for (k, h) in heardFor.enumerated() { if let h { matches[lyric[k].line].append((lyric[k].slot, h)) } }
+        // A line's anchor is its first match that the next match follows
+        // closely; a lone common word well before the rest ("and" misheard
+        // from the line before) does not mark where the line starts.
         var firstHeard = [Int?](repeating: nil, count: lines.count)
+        var firstSlot = [Int](repeating: 0, count: lines.count)
         var lastHeard = [Int?](repeating: nil, count: lines.count)
-        for (k, h) in heardFor.enumerated() {
-            guard let h else { continue }
-            let line = lyric[k].line
-            if firstHeard[line] == nil { firstHeard[line] = h }
-            lastHeard[line] = h
+        for line in lines.indices where !matches[line].isEmpty {
+            let list = matches[line]
+            var anchor = 0
+            while anchor + 1 < list.count, heard[list[anchor + 1].heard].time - heard[list[anchor].heard].time > 1.5 {
+                anchor += 1
+            }
+            firstHeard[line] = list[anchor].heard
+            firstSlot[line] = list[anchor].slot
+            lastHeard[line] = list.last!.heard
         }
 
         // Line starts.
@@ -84,12 +94,20 @@ enum LyricsAligner {
             let nextMatched = wordLines[(position + 1)...].lazy.compactMap { firstHeard[$0] }.first ?? m
             if let first = firstHeard[line] {
                 // Step back over unmatched words sung just before (each within
-                // 2.5 s of the next, at most 4 s in all).
+                // 2.5 s of the next, at most 4 s in all), no more of them than
+                // the line has words before its anchor.
                 var start = first
-                while start - 1 > previousEnd,
+                while first - start < firstSlot[line], start - 1 > previousEnd,
                       heard[start].time - heard[start - 1].time < 2.5,
                       heard[first].time - heard[start - 1].time < 4 { start -= 1 }
-                starts[line] = heard[start].time
+                if start == first, firstSlot[line] > 0 {
+                    // The opening words were not recognised at all: back up
+                    // about a syllable-pair per word, not past the line before.
+                    let floor = previousEnd >= 0 ? heard[previousEnd].time + 0.3 : 0
+                    starts[line] = max(floor, heard[first].time - 0.32 * Double(firstSlot[line]))
+                } else {
+                    starts[line] = heard[start].time
+                }
                 previousEnd = max(previousEnd, lastHeard[line] ?? first)
             } else if previousEnd + 1 < nextMatched {
                 starts[line] = heard[previousEnd + 1].time
@@ -143,49 +161,80 @@ enum LyricsAligner {
             }
             words[line] = zip(lineWords[line], times).map { LyricWord(time: $1!, text: $0) }
         }
-        return Timing(lines: starts, words: words)
+        return Timing(lines: starts, words: words, heard: lines.indices.map { firstHeard[$0] != nil })
     }
 
-    /// Word times for lyrics whose lines are already timed: each line keeps its
-    /// time, and only the words heard between it and the next line are matched
-    /// to it, so a repeated chorus can't borrow another chorus's words.
+    /// Word times for lyrics whose lines are already timed (LRCLIB or a .lrc).
+    /// Those line times are often a second or more off (another cut's timing,
+    /// or simply sloppy), so the whole song is aligned as for untimed lyrics
+    /// and a line moves to where it is actually sung when its words were
+    /// recognised there, within `maxShift` of its stated time after the
+    /// song's typical offset is allowed for. Lines with nothing recognisable,
+    /// and empty break lines, keep their stated time plus that offset.
+    static let maxShift = 4.0
+
     static func alignWords(timedLines: [(time: Double, text: String)], heard: [Word]) -> Timing {
+        let texts = timedLines.map(\.text)
+        var global = align(lines: texts, heard: heard)
+        let heardLine = global.heard.count == texts.count ? global.heard : texts.map { _ in false }
+
+        // The song's typical offset between stated and sung times (median).
+        var offsets: [Double] = []
+        for (index, line) in timedLines.enumerated() where heardLine[index] {
+            if let t = global.lines[index], abs(t - line.time) < 8 { offsets.append(t - line.time) }
+        }
+        offsets.sort()
+        let typical = offsets.isEmpty ? 0 : offsets[offsets.count / 2]
+
         var starts: [Double?] = []
         var words: [[LyricWord]] = []
+        var trusted: [Bool] = []
         for (index, line) in timedLines.enumerated() {
+            let stated = line.time + typical
             let pieces = line.text.split(whereSeparator: \.isWhitespace).map(String.init)
-            // An empty timed line marks a break (shown as ♪); it keeps its time.
-            guard !pieces.isEmpty else { starts.append(line.time); words.append([]); continue }
-            let end = index + 1 < timedLines.count ? timedLines[index + 1].time : line.time + 8
-            let window = heard.filter { $0.time >= line.time - 0.6 && $0.time < end - 0.05 }
-            var times = [Double](repeating: line.time, count: pieces.count)
-            let local = align(lines: [line.text], heard: window)
-            if !window.isEmpty, local.words[0].count == pieces.count {
-                // The first word is the known line start; the rest keep their
-                // heard order and stay inside the line's span.
-                // Heard times are shown `lead` early like elsewhere; each word
-                // at least a short step after the one before.
-                var previous = line.time
-                for k in pieces.indices where k > 0 {
-                    previous = min(end - 0.05, max(previous + 0.12, local.words[0][k].time - lead))
-                    times[k] = previous
-                }
-            } else {
-                // Nothing heard: spread the words over the first part of the line.
-                let span = min(end - line.time, 0.45 * Double(pieces.count))
-                for k in pieces.indices { times[k] = line.time + span * Double(k) / Double(pieces.count) }
+            if pieces.isEmpty {
+                // An empty timed line marks a break (shown as ♪).
+                starts.append(stated); words.append([]); trusted.append(false); continue
             }
-            starts.append(line.time)
-            words.append(zip(pieces, times).map { LyricWord(time: $1, text: $0) })
+            if heardLine[index], let sung = global.lines[index], abs(sung - stated) <= maxShift {
+                starts.append(sung); words.append(global.words[index]); trusted.append(true)
+            } else {
+                starts.append(stated); words.append([]); trusted.append(false)
+            }
         }
-        return Timing(lines: starts, words: words, alreadyLed: true)
+        // Always moving forward; then spread the words of estimated lines over
+        // the start of their span.
+        var last = -Double.infinity
+        for index in starts.indices {
+            guard var t = starts[index] else { continue }
+            if t <= last { t = last + 0.3; starts[index] = t }
+            last = t
+        }
+        for index in starts.indices where !trusted[index] {
+            let pieces = timedLines[index].text.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard !pieces.isEmpty, let start = starts[index] else { continue }
+            let next = starts[(index + 1)...].lazy.compactMap { $0 }.first ?? start + 8
+            let span = min(max(0.3, next - start - 0.2), 0.45 * Double(pieces.count))
+            words[index] = pieces.enumerated().map { k, text in
+                LyricWord(time: start + span * Double(k) / Double(pieces.count), text: text)
+            }
+        }
+        // A trusted line's words must not run past the next line's start.
+        for index in starts.indices where trusted[index] {
+            guard let next = starts[(index + 1)...].lazy.compactMap({ $0 }).first else { continue }
+            words[index] = words[index].map { LyricWord(time: min($0.time, next - 0.05), text: $0.text) }
+        }
+        global.lines = starts
+        global.words = words
+        global.heard = trusted
+        return global
     }
 
     /// Enhanced LRC: `[mm:ss.xx]<mm:ss.xx>word <mm:ss.xx>word`, each stamp a
     /// little ahead of the word so it lights as it is sung.
     static func lrc(lines: [String], timing: Timing) -> String {
         func stamp(_ time: Double) -> String {
-            let t = max(0, time - (timing.alreadyLed ? 0 : lead))
+            let t = max(0, time - lead)
             return String(format: "%02d:%05.2f", Int(t / 60), t.truncatingRemainder(dividingBy: 60))
         }
         return lines.indices.map { index -> String in

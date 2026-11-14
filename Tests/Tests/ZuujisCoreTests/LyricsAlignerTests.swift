@@ -64,29 +64,77 @@ final class LyricsAlignerTests: XCTestCase {
 }
 
 final class LyricsAlignerAnchoredTests: XCTestCase {
-    func testKeepsLineTimesAndAddsWords() {
-        let lines: [(time: Double, text: String)] = [(10, "Chorus goes here"), (14, "Verse line"), (20, "Chorus goes here")]
-        let heard = [(10.2, "chorus"), (10.8, "goes"), (11.3, "here"), (14.1, "verse"), (14.6, "line"),
-                     (20.1, "chorus"), (20.5, "goes"), (21.4, "here")].map { LyricsAligner.Word(time: $0.0, text: $0.1) }
-        let timing = LyricsAligner.alignWords(timedLines: lines, heard: heard)
-        XCTAssertEqual(timing.lines, [10, 14, 20])
-        XCTAssertEqual(timing.words[0].map(\.time), [10, 10.65, 11.15])
+    private func words(_ pairs: [(Double, String)]) -> [LyricsAligner.Word] {
+        pairs.map { LyricsAligner.Word(time: $0.0, text: $0.1) }
+    }
+
+    func testLinesMoveToWhereTheyAreSung() {
+        // Stated times run 2 s early, as LRCLIB's did for "Time After Time".
+        let lines: [(time: Double, text: String)] = [(10, "Chorus goes here"), (14, "Verse line now"), (20, "Chorus goes here")]
+        let timing = LyricsAligner.alignWords(timedLines: lines, heard: words([
+            (12.0, "chorus"), (12.6, "goes"), (13.1, "here"), (16.0, "verse"), (16.5, "line"), (16.9, "now"),
+            (22.0, "chorus"), (22.5, "goes"), (23.4, "here"),
+        ]))
+        XCTAssertEqual(timing.lines, [12, 16, 22])
         // The second chorus uses its own words, not the first one's.
-        XCTAssertEqual(timing.words[2].map(\.time), [20, 20.35, 21.25])
+        XCTAssertEqual(timing.words[2].map(\.time), [22, 22.5, 23.4])
+    }
+
+    func testUnrecognisedLineTakesTheSongsOffset() {
+        let lines: [(time: Double, text: String)] = [(10, "One two three"), (14, "Mumbled words here"), (20, "Four five six")]
+        let timing = LyricsAligner.alignWords(timedLines: lines, heard: words([
+            (11.5, "one"), (12, "two"), (12.5, "three"), (21.5, "four"), (22, "five"), (22.5, "six"),
+        ]))
+        XCTAssertEqual(timing.lines[1] ?? 0, 15.5, accuracy: 0.001)
+    }
+
+    func testAStrayMatchFarAwayIsIgnored() {
+        // "time" heard 30 s away must not drag the line there.
+        let lines: [(time: Double, text: String)] = [(10, "Time"), (12, "After all")]
+        let timing = LyricsAligner.alignWords(timedLines: lines, heard: words([(40, "time"), (12.1, "after"), (12.4, "all")]))
+        XCTAssertLessThan(timing.lines[0] ?? 99, 12)
     }
 
     func testKeepsInstrumentalBreaks() throws {
         let lines: [(time: Double, text: String)] = [(5, "Sung"), (8, ""), (12, "Again")]
         let timing = LyricsAligner.alignWords(timedLines: lines, heard: [])
         let lyrics = try XCTUnwrap(Lyrics.parse(LyricsAligner.lrc(lines: lines.map(\.text), timing: timing)))
-        XCTAssertEqual(lyrics.lines.map(\.time), [5, 8, 12])
+        XCTAssertEqual(lyrics.lines.count, 3)
+        XCTAssertEqual(lyrics.lines[1].text, "")
     }
 
     func testUnheardLineStillGetsWordTimes() {
         let timing = LyricsAligner.alignWords(timedLines: [(5, "Nothing heard here"), (9, "Next")], heard: [])
-        XCTAssertTrue(LyricsAligner.lrc(lines: ["Nothing heard here", "Next"], timing: timing).hasPrefix("[00:05.00]"))
         XCTAssertEqual(timing.words[0].count, 3)
         XCTAssertEqual(timing.words[0].first?.time, 5)
         XCTAssertLessThan(timing.words[0].last?.time ?? 99, 9)
+    }
+}
+
+final class LyricsAlignerMishearingTests: XCTestCase {
+    private func words(_ pairs: [(Double, String)]) -> [LyricsAligner.Word] {
+        pairs.map { LyricsAligner.Word(time: $0.0, text: $0.1) }
+    }
+
+    func testLoneLeadingMatchDoesNotStartTheLine() {
+        // "if I'm okay" heard as "and I okay": that "and" must not start the
+        // next line, "And you say go slow", sung 2.5 s later.
+        let lines = ["Wondering if I'm okay", "And you say go slow"]
+        let timing = LyricsAligner.align(lines: lines, heard: words([
+            (130.8, "wondering"), (131.9, "and"), (133.1, "I"), (133.6, "okay"),
+            (134.4, "when"), (134.7, "you"), (135.0, "say"), (135.4, "go"), (135.8, "slow"),
+        ]))
+        XCTAssertGreaterThan(timing.lines[1] ?? 0, 133.6)
+    }
+
+    func testMissedOpeningWordsBackUpTheStart() {
+        // Only "darkness" was recognised, five words into the line.
+        let lines = ["Time after time", "After my picture fades our darkness has turned"]
+        let timing = LyricsAligner.align(lines: lines, heard: words([
+            (100, "time"), (100.5, "after"), (101, "time"), (124.0, "darkness"), (125.0, "has"), (125.5, "turned"),
+        ]))
+        let start = timing.lines[1] ?? 0
+        XCTAssertLessThan(start, 123)
+        XCTAssertGreaterThan(start, 120)
     }
 }

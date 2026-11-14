@@ -62,6 +62,18 @@ enum LyricsTimer {
         return words
     }
 
+    /// Bumped when the timing method improves: older files are ignored, so
+    /// those songs show their usual lyrics again and are re-timed by the next
+    /// album or library run. 2: line times follow what is actually sung.
+    nonisolated static let wordsRevision = 2
+
+    /// The saved word timing for `song`, if it was made by the current method.
+    nonisolated static func currentWordsText(for song: URL) -> String? {
+        guard let text = try? String(contentsOf: wordsFile(for: song), encoding: .utf8),
+              text.contains("[zmp-words-rev:\(wordsRevision)]") else { return nil }
+        return text
+    }
+
     /// Where word-timed lyrics are kept: the app's own folder, never beside
     /// the music. `LyricsStore` reads it before any other source.
     nonisolated static func wordsFile(for song: URL) -> URL {
@@ -82,7 +94,7 @@ enum LyricsTimer {
         let timing = lyrics.isSynced
             ? LyricsAligner.alignWords(timedLines: lyrics.lines.map { ($0.time ?? 0, $0.text) }, heard: heard)
             : LyricsAligner.align(lines: lines, heard: heard)
-        var text = "[zmp-song:\(song.path)]\n"
+        var text = "[zmp-song:\(song.path)]\n[zmp-words-rev:\(wordsRevision)]\n"
         if let artist, !artist.isEmpty { text += "[ar:\(artist)]\n" }
         if let title, !title.isEmpty { text += "[ti:\(title)]\n" }
         text += "[by:Zuujis Media Player, timed by on-device speech recognition]\n"
