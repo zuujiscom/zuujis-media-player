@@ -18,6 +18,8 @@ import Foundation
 ///    the music) so each song is asked about once.
 ///
 /// Either source may hold LRC text, so each is run through `Lyrics.parse`.
+/// With the lookup on, a song whose own lyrics are untimed is also looked up,
+/// and LRCLIB's synced lyrics replace them when it has some.
 @MainActor
 final class LyricsStore: ObservableObject {
     @Published private(set) var lyrics: Lyrics?
@@ -97,23 +99,47 @@ final class LyricsStore: ObservableObject {
         task = Task { [weak self] in
             var found = await Self.find(for: track.url)
             var message: String?
-            if found == nil, online {
+            // Plain lyrics in the file are kept unless LRCLIB has timed ones,
+            // since many rips embed the words without timing.
+            let local = found
+            if found?.isSynced != true, online {
                 // The player's copy of the tags may still be loading.
                 var asked = Query(track)
                 let meta = await TrackMetadata.read(track.url)
                 if let title = meta.title, !title.isEmpty { asked.title = title }
                 asked.artist = meta.artist ?? track.artist
                 asked.album = meta.album ?? track.album
-                (found, message) = await Self.fetchOnline(asked)
+                asked.title = Self.withoutArtist(asked.title, artist: asked.artist)
+                let (fetched, why) = await Self.fetchOnline(asked)
+                if let local, fetched?.isSynced != true {
+                    found = local          // nothing better online
+                } else {
+                    (found, message) = (fetched, why)
+                }
             }
             guard !Task.isCancelled, let self, self.url == track.url else { return }
             // The title and artist can still be filling in from the tags; a
             // miss is remembered only for this run.
-            if found == nil, online { self.missed.insert(track.url) }
+            if found?.isSynced != true, online { self.missed.insert(track.url) }
             self.lyrics = found
             self.onlineMessage = message
             self.isLoading = false
         }
+    }
+
+    /// Some rips put the artist into the title ("Broken Wings - Bryan Adams" or
+    /// "Bryan Adams - Broken Wings"), which LRCLIB never matches.
+    nonisolated static func withoutArtist(_ title: String, artist: String?) -> String {
+        guard let artist, !artist.isEmpty else { return title }
+        for (sep) in [" - ", " – ", " — "] {
+            if title.lowercased().hasSuffix((sep + artist).lowercased()) {
+                return String(title.dropLast(sep.count + artist.count))
+            }
+            if title.lowercased().hasPrefix((artist + sep).lowercased()) {
+                return String(title.dropFirst(artist.count + sep.count))
+            }
+        }
+        return title
     }
 
     // MARK: Online (LRCLIB)

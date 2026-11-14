@@ -1224,7 +1224,7 @@ enum OnlineCoverArt {
         // artists' singles above a big act's own albums, so if that finds no
         // match, read the artist's whole discography and match within it.
         var artURL: String?
-        if let results = await search(["term": "\(artist) \(name)", "entity": byAlbum ? "album" : "song", "limit": "25"]) {
+        if let results = await search(["term": "\(artist) \(plainTitle(name))", "entity": byAlbum ? "album" : "song", "limit": "25"]) {
             artURL = best(results, artist: artist, name: name, field: byAlbum ? "collectionName" : "trackName", partial: false)
         } else {
             return nil // offline: ask again later
@@ -1257,7 +1257,7 @@ enum OnlineCoverArt {
         func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\"", with: "") + "\"" }
         guard let groups = await request("https://musicbrainz.org/ws/2/release-group/", [
             "fmt": "json", "limit": "10",
-            "query": "releasegroup:\(quoted(album)) AND artist:\(quoted(artist))",
+            "query": "releasegroup:\(quoted(plainTitle(album))) AND artist:\(quoted(artist))",
         ], results: "release-groups") else { return nil }
         let want = baseTitle(album), wantArtist = norm(artist)
         for group in groups {
@@ -1296,7 +1296,12 @@ enum OnlineCoverArt {
     /// A title without the store's edition labels: "Kill 'Em All (Remastered)",
     /// "Beyond Magnetic - EP" and "Garage Inc." compare as "killemall",
     /// "beyondmagnetic" and "garageinc".
-    static func baseTitle(_ text: String?) -> String {
+    static func baseTitle(_ text: String?) -> String { norm(plainTitle(text)) }
+
+    /// The title as text, without bracketed edition labels or "- EP"/"- Single";
+    /// what is searched for, since "(Deluxe Edition)" in the search words fills
+    /// the results with every other deluxe edition.
+    static func plainTitle(_ text: String?) -> String {
         var t = text ?? ""
         for (open, close) in [("(", ")"), ("[", "]")] {
             while let a = t.range(of: open), let b = t.range(of: close, range: a.upperBound..<t.endIndex) {
@@ -1304,7 +1309,8 @@ enum OnlineCoverArt {
             }
         }
         for suffix in [" - Single", " - EP"] where t.hasSuffix(suffix) { t = String(t.dropLast(suffix.count)) }
-        return norm(t)
+        let plain = t.trimmingCharacters(in: .whitespaces)
+        return plain.isEmpty ? (text ?? "") : plain
     }
 
     /// The artwork URL of the result that is this artist's release of this
