@@ -116,17 +116,16 @@ struct BandControlsView: View {
                 }
             }
 
+            let withLevels = row.background(alignment: .topLeading) {
+                BandLevelBackdrop(
+                    frequencies: engine.bands.map(\.frequency),
+                    column: column, spacing: Self.columnSpacing, trackLength: track
+                )
+            }
             if fits {
-                row
-                    .background(alignment: .topLeading) {
-                        BandLevelBackdrop(
-                            frequencies: engine.bands.map(\.frequency),
-                            column: column, spacing: Self.columnSpacing, trackLength: track
-                        )
-                    }
-                    .frame(width: geo.size.width, alignment: .center)
+                withLevels.frame(width: geo.size.width, alignment: .center)
             } else {
-                ScrollView(.horizontal, showsIndicators: true) { row }
+                ScrollView(.horizontal, showsIndicators: true) { withLevels }
             }
         }
         .frame(minHeight: BandSlider.minRowHeight, idealHeight: BandSlider.minRowHeight,
@@ -297,6 +296,7 @@ struct BandSlider: View {
 struct BandLevelBackdrop: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
+    @EnvironmentObject private var player: PlayerEngine
     @State private var smoother = SpectrumSmoother()
 
     let frequencies: [Double]
@@ -305,10 +305,10 @@ struct BandLevelBackdrop: View {
     let trackLength: CGFloat
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !engine.isRunning)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { timeline in
             Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                smoother.step(toward: meters.snapshot.spectrum, at: timeline.date, live: engine.isRunning)
-                guard engine.isRunning, !frequencies.isEmpty else { return }
+                smoother.step(toward: meters.snapshot.spectrum, at: timeline.date, live: isLive)
+                guard isLive, !frequencies.isEmpty else { return }
 
                 let values = smoother.values
                 let bottom = BandSlider.trackTop + trackLength - 7
@@ -341,6 +341,11 @@ struct BandLevelBackdrop: View {
         }
         .allowsHitTesting(false)
     }
+
+    /// Audio is flowing through something metered: the system route, or the
+    /// file player, which meters its own output with the EQ off. The same
+    /// rule as the Response graph.
+    private var isLive: Bool { engine.isRunning || player.state == .playing }
 
     /// The signal gradient, sampled: cyan at the low end, pink at the top.
     private static func tint(at t: Double) -> Color {

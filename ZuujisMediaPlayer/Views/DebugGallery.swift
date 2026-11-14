@@ -249,7 +249,9 @@ enum DebugGallery {
                 player.open([URL(fileURLWithPath: file)])
                 try? await Task.sleep(for: .seconds(Double(env["ZMP_GALLERY_SEEK"] ?? "") ?? 0) + .seconds(3))
             }
-            engine.isRunning = true
+            // ZMP_GALLERY_EQ_OFF shows the window with the equalizer off, as
+            // when only the file player is metering.
+            engine.isRunning = env["ZMP_GALLERY_EQ_OFF"] == nil
             let fake = env["ZMP_GALLERY_PLAY"] != nil ? nil : Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                 Task { @MainActor in
                     engine.meters.snapshot = MeterSnapshot(
