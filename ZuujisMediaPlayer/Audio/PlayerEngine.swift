@@ -891,7 +891,7 @@ final class PlayerEngine: ObservableObject {
         let analyzer = analyzer
         let latest = latest
         let meters = equalizer?.meters
-        eqNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { buffer, _ in
+        eqNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { [weak self] buffer, _ in
             guard let channel = buffer.floatChannelData?[0] else { return }
             let total = Int(buffer.frameLength)
             guard total > 0 else { return }
@@ -929,7 +929,15 @@ final class PlayerEngine: ObservableObject {
                 level: min(1, analyzer.rms(buffer: buffer) * 3),
                 latencyMs: 0
             )
-            DispatchQueue.main.async { meters?.publishPlayer(snapshot) }
+            DispatchQueue.main.async {
+                meters?.publishPlayer(snapshot)
+                // The header's "ms" is the system route's while it runs; with the
+                // route off it shows the player's own output delay instead.
+                MainActor.assumeIsolated {
+                    guard let self, self.equalizer?.isRunning != true else { return }
+                    meters?.setLatency((self.outputLatency * 10_000).rounded() / 10)
+                }
+            }
         }
     }
 
@@ -945,6 +953,7 @@ final class PlayerEngine: ObservableObject {
     private func clearMeters() {
         latest.clear()
         equalizer?.meters.clearPlayer(routeRunning: equalizer?.isRunning == true)
+        if equalizer?.isRunning != true { equalizer?.meters.setLatency(0) }
     }
 
     // MARK: - Track info
