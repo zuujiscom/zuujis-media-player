@@ -22,7 +22,8 @@ struct LyricsCard: View {
                         .background(Capsule().fill((lyrics.isSynced ? Theme.mint : Theme.ink).opacity(0.12)))
                 }
             }
-            if store.lyrics?.isSynced == false || store.isTiming || store.timingStatus != nil { timingBar }
+            if (store.lyrics.map { !$0.hasWordTimes } ?? false) || store.isTiming
+                || store.timingStatus != nil || store.batchStatus != nil { timingBar }
             LyricsBox(showsBadge: false)
         }
         .card()
@@ -32,22 +33,30 @@ struct LyricsCard: View {
     private var timingBar: some View {
         HStack(spacing: 8) {
             if store.isTiming { ProgressView().controlSize(.small) }
-            if let status = store.timingStatus {
+            if let status = store.timingStatus ?? store.batchStatus {
                 Text(status)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.ink.opacity(0.6))
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
-            if !store.isTiming, store.lyrics?.isSynced == false {
-                Button { store.timeCurrentLyrics() } label: {
-                    Label("Time These Lyrics", systemImage: "waveform.badge.mic")
+            if store.isTimingBatch {
+                Button { store.stopTimingWords() } label: {
+                    Label("Stop", systemImage: "stop.fill")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(Theme.ink.opacity(0.85))
                         .pill()
                 }
                 .buttonStyle(.plain)
-                .help("Listen to this song on this Mac (speech recognition, nothing is uploaded) and time each line and word. Saves a .lrc file beside the song.")
+            } else if !store.isTiming, let lyrics = store.lyrics, !lyrics.hasWordTimes {
+                Button { store.timeCurrentLyrics() } label: {
+                    Label(lyrics.isSynced ? "Time Words" : "Time These Lyrics", systemImage: "waveform.badge.mic")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Theme.ink.opacity(0.85))
+                        .pill()
+                }
+                .buttonStyle(.plain)
+                .help("Listen to this song on this Mac (speech recognition, nothing is uploaded) and time each word, so the lyrics light up word by word. Kept in the app's own folder; your music folder is not changed.")
             }
         }
     }

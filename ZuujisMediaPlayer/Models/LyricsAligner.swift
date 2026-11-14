@@ -21,6 +21,9 @@ enum LyricsAligner {
         var lines: [Double?]
         /// Each line's words (split on spaces) with their start times.
         var words: [[LyricWord]]
+        /// The times are final: `lrc` writes them as they are (word timing
+        /// over known line times, which must not move).
+        var alreadyLed = false
     }
 
     /// Times every line and word. A word the recognizer heard takes its time;
@@ -143,11 +146,46 @@ enum LyricsAligner {
         return Timing(lines: starts, words: words)
     }
 
+    /// Word times for lyrics whose lines are already timed: each line keeps its
+    /// time, and only the words heard between it and the next line are matched
+    /// to it, so a repeated chorus can't borrow another chorus's words.
+    static func alignWords(timedLines: [(time: Double, text: String)], heard: [Word]) -> Timing {
+        var starts: [Double?] = []
+        var words: [[LyricWord]] = []
+        for (index, line) in timedLines.enumerated() {
+            let pieces = line.text.split(whereSeparator: \.isWhitespace).map(String.init)
+            // An empty timed line marks a break (shown as ♪); it keeps its time.
+            guard !pieces.isEmpty else { starts.append(line.time); words.append([]); continue }
+            let end = index + 1 < timedLines.count ? timedLines[index + 1].time : line.time + 8
+            let window = heard.filter { $0.time >= line.time - 0.6 && $0.time < end - 0.05 }
+            var times = [Double](repeating: line.time, count: pieces.count)
+            let local = align(lines: [line.text], heard: window)
+            if !window.isEmpty, local.words[0].count == pieces.count {
+                // The first word is the known line start; the rest keep their
+                // heard order and stay inside the line's span.
+                // Heard times are shown `lead` early like elsewhere; each word
+                // at least a short step after the one before.
+                var previous = line.time
+                for k in pieces.indices where k > 0 {
+                    previous = min(end - 0.05, max(previous + 0.12, local.words[0][k].time - lead))
+                    times[k] = previous
+                }
+            } else {
+                // Nothing heard: spread the words over the first part of the line.
+                let span = min(end - line.time, 0.45 * Double(pieces.count))
+                for k in pieces.indices { times[k] = line.time + span * Double(k) / Double(pieces.count) }
+            }
+            starts.append(line.time)
+            words.append(zip(pieces, times).map { LyricWord(time: $1, text: $0) })
+        }
+        return Timing(lines: starts, words: words, alreadyLed: true)
+    }
+
     /// Enhanced LRC: `[mm:ss.xx]<mm:ss.xx>word <mm:ss.xx>word`, each stamp a
     /// little ahead of the word so it lights as it is sung.
     static func lrc(lines: [String], timing: Timing) -> String {
         func stamp(_ time: Double) -> String {
-            let t = max(0, time - lead)
+            let t = max(0, time - (timing.alreadyLed ? 0 : lead))
             return String(format: "%02d:%05.2f", Int(t / 60), t.truncatingRemainder(dividingBy: 60))
         }
         return lines.indices.map { index -> String in

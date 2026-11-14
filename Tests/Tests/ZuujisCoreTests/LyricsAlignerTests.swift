@@ -62,3 +62,31 @@ final class LyricsAlignerTests: XCTestCase {
         XCTAssertEqual(lyrics.lines[0].words?.count, 2)
     }
 }
+
+final class LyricsAlignerAnchoredTests: XCTestCase {
+    func testKeepsLineTimesAndAddsWords() {
+        let lines: [(time: Double, text: String)] = [(10, "Chorus goes here"), (14, "Verse line"), (20, "Chorus goes here")]
+        let heard = [(10.2, "chorus"), (10.8, "goes"), (11.3, "here"), (14.1, "verse"), (14.6, "line"),
+                     (20.1, "chorus"), (20.5, "goes"), (21.4, "here")].map { LyricsAligner.Word(time: $0.0, text: $0.1) }
+        let timing = LyricsAligner.alignWords(timedLines: lines, heard: heard)
+        XCTAssertEqual(timing.lines, [10, 14, 20])
+        XCTAssertEqual(timing.words[0].map(\.time), [10, 10.65, 11.15])
+        // The second chorus uses its own words, not the first one's.
+        XCTAssertEqual(timing.words[2].map(\.time), [20, 20.35, 21.25])
+    }
+
+    func testKeepsInstrumentalBreaks() throws {
+        let lines: [(time: Double, text: String)] = [(5, "Sung"), (8, ""), (12, "Again")]
+        let timing = LyricsAligner.alignWords(timedLines: lines, heard: [])
+        let lyrics = try XCTUnwrap(Lyrics.parse(LyricsAligner.lrc(lines: lines.map(\.text), timing: timing)))
+        XCTAssertEqual(lyrics.lines.map(\.time), [5, 8, 12])
+    }
+
+    func testUnheardLineStillGetsWordTimes() {
+        let timing = LyricsAligner.alignWords(timedLines: [(5, "Nothing heard here"), (9, "Next")], heard: [])
+        XCTAssertTrue(LyricsAligner.lrc(lines: ["Nothing heard here", "Next"], timing: timing).hasPrefix("[00:05.00]"))
+        XCTAssertEqual(timing.words[0].count, 3)
+        XCTAssertEqual(timing.words[0].first?.time, 5)
+        XCTAssertLessThan(timing.words[0].last?.time ?? 99, 9)
+    }
+}

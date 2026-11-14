@@ -31,6 +31,9 @@ struct Lyrics: Equatable {
     var lines: [LyricLine]
     var isSynced: Bool
 
+    /// Some line carries per-word times (enhanced LRC).
+    var hasWordTimes: Bool { lines.contains { $0.words != nil } }
+
     /// Reads LRC (`[01:23.45]text`, several stamps per line, an `[offset:ms]`
     /// tag, enhanced `<01:23.45>` word stamps kept as `words`) or, when no line has a
     /// stamp, plain text. nil when there is nothing to show.

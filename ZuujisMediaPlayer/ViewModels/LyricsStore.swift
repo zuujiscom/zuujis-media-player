@@ -94,11 +94,11 @@ final class LyricsStore: ObservableObject {
     @Published private(set) var timingStatus: String?
     @Published private(set) var isTiming = false
 
-    /// Listens to the playing song with on-device speech recognition, times
-    /// its untimed lyrics line by line and word by word, and saves them as a
-    /// `.lrc` beside the song (see `LyricsTimer`).
+    /// Listens to the playing song with on-device speech recognition and
+    /// times its lyrics word by word (line by line too when they were
+    /// untimed), saved in the app's folder (see `LyricsTimer`).
     func timeCurrentLyrics() {
-        guard let track = currentTrack, let plain = lyrics, !plain.isSynced, !isTiming else { return }
+        guard let track = currentTrack, let plain = lyrics, !plain.hasWordTimes, !isTiming, batchStatus == nil else { return }
         isTiming = true
         timingStatus = "Starting…"
         Task { [weak self] in
@@ -120,12 +120,16 @@ final class LyricsStore: ObservableObject {
         }
     }
 
-    /// Swaps in a sidecar's lyrics if one has appeared and the shown lyrics
-    /// are untimed; quiet otherwise (no reload, no flicker).
+    /// Swaps in better lyrics if they have appeared since the song loaded (a
+    /// word-timed copy, or a timed .lrc beside the song while the shown ones
+    /// are untimed); quiet otherwise (no reload, no flicker).
     func recheckSidecar() {
-        guard let url, lyrics?.isSynced != true, !isLoading else { return }
+        guard let url, lyrics?.hasWordTimes != true, !isLoading else { return }
+        let shownSynced = lyrics?.isSynced == true
         Task { [weak self] in
-            let found = await Task.detached(priority: .utility) { Self.sidecar(for: url) }.value
+            let found = await Task.detached(priority: .utility) {
+                Self.wordTimed(for: url) ?? (shownSynced ? nil : Self.sidecar(for: url))
+            }.value
             guard let self, self.url == url, let found, found.isSynced || self.lyrics == nil else { return }
             self.lyrics = found
             self.onlineMessage = nil
@@ -194,6 +198,59 @@ final class LyricsStore: ObservableObject {
         return title
     }
 
+    // MARK: Timing words for many songs
+
+    /// Progress of a batch ("Timing words: 12 of 140 — Song"); nil when idle.
+    @Published private(set) var batchStatus: String?
+    private var batchTask: Task<Void, Never>?
+
+    /// Times the words of every given song that has lyrics without word times,
+    /// one after another. Songs already done are skipped, so stopping and
+    /// starting again carries on where it left off.
+    func timeWords(for songs: [LibraryTrack], label: String) {
+        guard batchTask == nil, !isTiming else { return }
+        let useOnline = onlineLookup
+        batchStatus = "Timing words: starting…"
+        batchTask = Task { [weak self] in
+            var done = 0, skipped = 0, failed = 0
+            for (index, song) in songs.enumerated() {
+                if Task.isCancelled { break }
+                if FileManager.default.fileExists(atPath: LyricsTimer.wordsFile(for: song.url).path) { skipped += 1; continue }
+                var lyrics = await Self.find(for: song.url)
+                if lyrics?.isSynced != true, useOnline, let artist = song.artist, !artist.isEmpty {
+                    let asked = Query(path: song.url.path, title: Self.withoutArtist(song.title, artist: artist),
+                                      artist: artist, album: song.album, duration: song.duration ?? 0)
+                    if let online = await Self.fetchOnline(asked).0, online.isSynced || lyrics == nil { lyrics = online }
+                }
+                guard let lyrics, !lyrics.hasWordTimes else { skipped += 1; continue }
+                await MainActor.run {
+                    self?.batchStatus = "Timing words: \(index + 1) of \(songs.count) — \(song.title)"
+                }
+                do {
+                    let timed = try await LyricsTimer.time(lyrics, song: song.url, title: song.title, artist: song.artist) { _ in }
+                    done += 1
+                    await MainActor.run {
+                        if let self, self.url == song.url { self.lyrics = timed }
+                    }
+                } catch {
+                    if Task.isCancelled { break }
+                    failed += 1
+                }
+            }
+            await MainActor.run {
+                guard let self else { return }
+                let stopped = Task.isCancelled ? "Stopped. " : ""
+                self.batchStatus = "\(stopped)\(label): \(done) timed, \(skipped) skipped" + (failed > 0 ? ", \(failed) failed" : "")
+                self.batchTask = nil
+            }
+            try? await Task.sleep(for: .seconds(12))
+            await MainActor.run { if self?.batchTask == nil { self?.batchStatus = nil } }
+        }
+    }
+
+    func stopTimingWords() { batchTask?.cancel() }
+    var isTimingBatch: Bool { batchTask != nil }
+
     // MARK: Online (LRCLIB)
 
     private nonisolated static var cacheFolder: URL {
@@ -220,6 +277,10 @@ final class LyricsStore: ObservableObject {
 
         init(_ track: PlayerEngine.TrackInfo) {
             path = track.url.path; title = track.title; artist = track.artist; album = track.album; duration = track.duration
+        }
+
+        init(path: String, title: String, artist: String?, album: String?, duration: Double) {
+            self.path = path; self.title = title; self.artist = artist; self.album = album; self.duration = duration
         }
     }
 
@@ -386,6 +447,9 @@ final class LyricsStore: ObservableObject {
     // MARK: Reading
 
     nonisolated static func find(for url: URL) async -> Lyrics? {
+        if let words = await Task.detached(priority: .utility, operation: { wordTimed(for: url) }).value {
+            return words
+        }
         if let sidecar = await Task.detached(priority: .utility, operation: { sidecar(for: url) }).value {
             return sidecar
         }
@@ -405,6 +469,13 @@ final class LyricsStore: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// The app's own word-timed copy ("Time These Lyrics"), if one was made.
+    nonisolated static func wordTimed(for url: URL) -> Lyrics? {
+        guard let text = try? String(contentsOf: LyricsTimer.wordsFile(for: url), encoding: .utf8),
+              let lyrics = Lyrics.parse(text), lyrics.isSynced else { return nil }
+        return lyrics
     }
 
     nonisolated static func sidecar(for url: URL) -> Lyrics? {

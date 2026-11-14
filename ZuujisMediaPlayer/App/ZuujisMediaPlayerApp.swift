@@ -319,6 +319,22 @@ struct ZuujisMediaPlayerApp: App {
                 Toggle("Look Up Missing Lyrics Online (LRCLIB)", isOn: $lyrics.onlineLookup)
                 Button(lyrics.recheckStatus ?? "Re-check Saved Online Lyrics") { lyrics.recheckSaved() }
                     .disabled(lyrics.recheckStatus != nil)
+                if lyrics.isTimingBatch {
+                    Text(lyrics.batchStatus ?? "Timing lyric words…")
+                    Button("Stop Timing Lyric Words") { lyrics.stopTimingWords() }
+                } else {
+                    Button("Time Lyric Words for This Album") {
+                        guard let track = player.track else { return }
+                        // Album and artist both, so another artist's "Greatest Hits" stays out.
+                        let songs = library.tracks.filter { $0.album == track.album && $0.artist == track.artist }
+                        lyrics.timeWords(for: songs, label: track.album ?? "This album")
+                    }
+                    .disabled(player.track?.album == nil)
+                    Button("Time Lyric Words for Whole Library") {
+                        lyrics.timeWords(for: library.tracks, label: "Library")
+                    }
+                    .disabled(library.tracks.isEmpty)
+                }
                 Toggle("Look Up Missing Album Art Online (iTunes)", isOn: Binding(
                     get: { onlineArtwork },
                     set: { onlineArtwork = $0; if $0 { player.refreshArtwork() } }))
