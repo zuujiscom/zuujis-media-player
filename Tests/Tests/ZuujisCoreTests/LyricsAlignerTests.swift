@@ -150,3 +150,43 @@ final class LyricsAlignerPartlyHeardTests: XCTestCase {
         XCTAssertEqual(timing.lines[1] ?? 0, 39.48 - 0.64, accuracy: 0.001)
     }
 }
+
+final class LyricsAlignerPassesTests: XCTestCase {
+    private func words(_ list: [(Double, String)]) -> [LyricsAligner.Word] {
+        list.map { LyricsAligner.Word(time: $0.0, text: $0.1) }
+    }
+
+    func testEachLineTakesThePassThatHeardIt() {
+        // The plain file heard only "darkness has"; the mixed-down copy heard
+        // the line's opening too.
+        let lines = ["Time after time", "After my picture fades our darkness has turned to gray"]
+        let plain = words([(100, "time"), (100.5, "after"), (101, "time"), (124.0, "darkness"), (125.0, "has")])
+        let mixed = words([(100, "time"), (101, "time"), (120.66, "after"), (121.4, "my"), (122.0, "picture"),
+                           (124.0, "darkness"), (125.0, "has")])
+        let timing = LyricsAligner.align(lines: lines, passes: [plain, mixed])
+        XCTAssertEqual(timing.lines[1] ?? 0, 120.66, accuracy: 0.001)
+        // The first line keeps the pass that heard all three words.
+        XCTAssertEqual(timing.words[0].map(\.time), [100, 100.5, 101])
+    }
+
+    func testOtherPassesFillInMissedWords() {
+        let lines = ["If you fall I will catch you"]
+        let first = words([(10, "if"), (10.3, "you"), (10.6, "fall"), (11.8, "catch"), (12.1, "you")])
+        let second = words([(10.3, "you"), (10.9, "i"), (11.4, "will"), (11.8, "catch")])
+        let timing = LyricsAligner.align(lines: lines, passes: [first, second])
+        XCTAssertEqual(timing.words[0].map(\.time), [10, 10.3, 10.6, 10.9, 11.4, 11.8, 12.1])
+    }
+
+    func testWordStretchedOverASilenceDoesNotStartTheLine() {
+        // "time" was reported 2.1 s long, running up to "after": the silence
+        // before the line was counted into it.
+        let lines = ["You will find me", "Time after time"]
+        let heard: [LyricsAligner.Word] = [
+            .init(time: 165.18, text: "you", duration: 0.18), .init(time: 165.36, text: "will", duration: 0.12),
+            .init(time: 165.48, text: "find", duration: 0.48), .init(time: 165.96, text: "time", duration: 2.1),
+            .init(time: 168.06, text: "after", duration: 0.48), .init(time: 168.54, text: "time", duration: 0.6),
+        ]
+        let timing = LyricsAligner.align(lines: lines, heard: heard)
+        XCTAssertEqual(timing.lines[1] ?? 0, 168.06 - 0.32, accuracy: 0.001)
+    }
+}
