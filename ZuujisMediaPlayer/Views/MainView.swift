@@ -232,6 +232,7 @@ struct AllPanelsHidden: View {
 struct HeaderBar: View {
     @EnvironmentObject private var engine: AudioEngine
     @EnvironmentObject private var meters: MeterState
+    @ObservedObject private var dataIssues = DataIssues.shared
     @EnvironmentObject private var presets: PresetManager
     @Environment(\.openWindow) private var openWindow
 
@@ -293,7 +294,18 @@ struct HeaderBar: View {
     /// Only a route error shows; the on/off state is the power button's job.
     @ViewBuilder
     private var statusLine: some View {
-        if let error = engine.routeErrorMessage {
+        if let issue = dataIssues.message {
+            Button { dataIssues.dismiss() } label: {
+                Label(issue, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Theme.amber)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 6)
+            .help(issue + "\n\nClick to dismiss.")
+            .accessibilityHint("Dismisses this notice")
+        } else if let error = engine.routeErrorMessage {
             Label(error, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Theme.amber)

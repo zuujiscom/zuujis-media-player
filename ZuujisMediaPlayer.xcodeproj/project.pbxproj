@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		30033A5F10AB6467D89EA51D /* SavedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D577BFB2309E7DC399B43F5B /* SavedFile.swift */; };
 		F57D25FFDCC4FA8C84C0F892 /* LyricsAligner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B9EF31810507F8686000FF /* LyricsAligner.swift */; };
 		063F679FEC9C1D0135AE8741 /* LyricsTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2AF04DED9F3C0325F2E41E3 /* LyricsTimer.swift */; };
 		FD5A94489ADD4D8AAC4C5E18 /* WindowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4760590A55C9D2031B97E2 /* WindowLayout.swift */; };
@@ -65,6 +66,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D577BFB2309E7DC399B43F5B /* SavedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedFile.swift; sourceTree = "<group>"; };
 		49B9EF31810507F8686000FF /* LyricsAligner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsAligner.swift; sourceTree = "<group>"; };
 		F2AF04DED9F3C0325F2E41E3 /* LyricsTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsTimer.swift; sourceTree = "<group>"; };
 		6E4760590A55C9D2031B97E2 /* WindowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLayout.swift; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				DF8F5628D2EEC3CA6D82ABC0 /* Lyrics.swift */,
 				49B9EF31810507F8686000FF /* LyricsAligner.swift */,
 				2000000000000000000000D3 /* AppPaths.swift */,
+				D577BFB2309E7DC399B43F5B /* SavedFile.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -445,6 +448,7 @@
 				94BBAA6FF83BD8F5BEDE6EE5 /* Lyrics.swift in Sources */,
 				F57D25FFDCC4FA8C84C0F892 /* LyricsAligner.swift in Sources */,
 				1000000000000000000000D3 /* AppPaths.swift in Sources */,
+				30033A5F10AB6467D89EA51D /* SavedFile.swift in Sources */,
 				1000000000000000000000D2 /* PlaylistStore.swift in Sources */,
 				CE21DD69E72240DEC7B39351 /* LyricsStore.swift in Sources */,
 				063F679FEC9C1D0135AE8741 /* LyricsTimer.swift in Sources */,

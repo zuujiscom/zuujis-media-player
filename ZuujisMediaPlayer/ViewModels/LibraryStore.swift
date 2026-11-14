@@ -278,8 +278,7 @@ final class LibraryStore: ObservableObject {
     private static let schema = 3
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
+        guard let saved = SavedFile.load(Saved.self, from: fileURL, label: "library") else { return }
         folders = saved.folders
         tracks = saved.tracks
         edits = saved.edits ?? [:]
@@ -300,7 +299,6 @@ final class LibraryStore: ObservableObject {
     }
 
     func saveNow() {
-        guard let data = try? JSONEncoder().encode(Saved(folders: folders, tracks: tracks, edits: edits, schema: Self.schema)) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        SavedFile.save(Saved(folders: folders, tracks: tracks, edits: edits, schema: Self.schema), to: fileURL, label: "library")
     }
 }

@@ -75,14 +75,12 @@ final class PresetManager: ObservableObject {
     // MARK: - Persistence
 
     private func loadPresets() {
-        guard let data = try? Data(contentsOf: storageURL) else { return }
-        guard let decoded = try? JSONDecoder().decode([EQPreset].self, from: data) else { return }
+        guard let decoded = SavedFile.load([EQPreset].self, from: storageURL, label: "EQ presets") else { return }
         customPresets = decoded
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(customPresets) else { return }
-        try? data.write(to: storageURL, options: .atomic)
+        SavedFile.save(customPresets, to: storageURL, label: "EQ presets")
     }
 
     func importPreset(from url: URL) {

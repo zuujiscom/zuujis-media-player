@@ -54,15 +54,13 @@ final class DeviceProfileStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: storageURL),
-              let decoded = try? JSONDecoder().decode([DeviceProfile].self, from: data) else { return }
+        guard let decoded = SavedFile.load([DeviceProfile].self, from: storageURL, label: "device profiles") else { return }
         profiles = Dictionary(uniqueKeysWithValues: decoded.map { ($0.deviceUID, $0) })
     }
 
     private func persist() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(sortedProfiles) else { return }
-        try? data.write(to: storageURL, options: .atomic)
+        SavedFile.save(sortedProfiles, to: storageURL, label: "device profiles", encoder: encoder)
     }
 }

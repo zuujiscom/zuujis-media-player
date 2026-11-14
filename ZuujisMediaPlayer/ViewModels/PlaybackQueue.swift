@@ -275,8 +275,7 @@ final class PlaybackQueue: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
+        guard let saved = SavedFile.load(Saved.self, from: fileURL, label: "play queue") else { return }
         // Assign the backing stores directly: the observers would each queue a
         // save of a half-restored state.
         _items = Published(initialValue: saved.items)
@@ -304,8 +303,7 @@ final class PlaybackQueue: ObservableObject {
 
     func saveNow() {
         let saved = Saved(items: items, currentID: currentID, shuffle: shuffle, repeatMode: repeatMode)
-        guard let data = try? JSONEncoder().encode(saved) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        SavedFile.save(saved, to: fileURL, label: "play queue")
     }
 }
 

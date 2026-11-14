@@ -22,8 +22,7 @@ final class PlaylistStore: ObservableObject {
         } else {
             self.fileURL = AppPaths.support.appendingPathComponent("playlists.json")
         }
-        if let data = try? Data(contentsOf: self.fileURL),
-           let saved = try? JSONDecoder().decode([Playlist].self, from: data) {
+        if let saved = SavedFile.load([Playlist].self, from: self.fileURL, label: "playlists") {
             playlists = saved
         }
         if !playlists.contains(where: { $0.id == Self.favoritesID }) {
@@ -126,7 +125,6 @@ final class PlaylistStore: ObservableObject {
     }
 
     func saveNow() {
-        guard let data = try? JSONEncoder().encode(playlists) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        SavedFile.save(playlists, to: fileURL, label: "playlists")
     }
 }
