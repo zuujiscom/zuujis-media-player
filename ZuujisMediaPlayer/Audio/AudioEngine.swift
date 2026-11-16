@@ -40,7 +40,7 @@ final class AudioEngine: NSObject, ObservableObject {
     // MARK: - Amplification
 
     /// Master amplification multiplier (1.0 = unity, 2.0 = +6dB, 4.0 = +12dB).
-    /// Applied via `AVAudioUnitEQ.globalGain` (+24 dB max).
+    /// Applied by the EQ node's gain stage (+24 dB max).
     @Published var masterGain: Double = 1.0 {
         didSet {
             applyMasterGain()
@@ -84,8 +84,7 @@ final class AudioEngine: NSObject, ObservableObject {
     private func applyMasterGain() {
         guard let eqNode else { return }
         // globalGain range: -96...24 dB
-        let db = amplificationDB.clamped(to: -96.0...24.0)
-        eqNode.globalGain = Float(db)
+        eqNode.globalGain = amplificationDB.clamped(to: -96.0...24.0)
     }
 
     // MARK: - Core Audio
@@ -97,7 +96,7 @@ final class AudioEngine: NSObject, ObservableObject {
 
     /// Replaced for every processing session — see `stopProcessing()`.
     private var engine = AVAudioEngine()
-    private var eqNode: AVAudioUnitEQ!
+    private var eqNode: GraphicEQ!
     private var fftAnalyzer = SpectrumAnalyzer()
     private var isSetup = false
 
@@ -660,11 +659,8 @@ final class AudioEngine: NSObject, ObservableObject {
     /// built here — it's built in `start()`, so simply launching the app never
     /// touches anyone else's audio.
     private func setupEngine() {
-        eqNode = AVAudioUnitEQ(numberOfBands: bands.count)
+        eqNode = GraphicEQ()
         syncEQNode()
-
-        // Amplification is applied via AVAudioUnitEQ.globalGain (+24 dB max),
-        // the native boost on the EQ processor.
         applyMasterGain()
 
         // The EQ node is attached in `startProcessing()`, which builds the
@@ -677,15 +673,9 @@ final class AudioEngine: NSObject, ObservableObject {
         guard let eqNode else { return }
         // `bands` holds what the user asked to hear at each frequency; the
         // node gets the gains that deliver it. See `EQResponse.compensated`.
-        let effective = EQResponse.compensated(bands, sampleRate: sampleRate)
-        for (i, band) in effective.enumerated() where i < eqNode.bands.count {
-            let f = eqNode.bands[i]
-            f.filterType = band.filterType.avType
-            f.frequency = Float(band.frequency)
-            f.gain = Float(band.gain)
-            f.bandwidth = Float(band.bandwidth)
-            f.bypass = !band.isEnabled || isBypassed
-        }
+        // The node takes any number of bands, so a new band count needs no
+        // new node and no new graph.
+        eqNode.set(bands: EQResponse.compensated(bands, sampleRate: sampleRate), bypassed: isBypassed)
     }
 
     private func formatDescription(_ format: AVAudioFormat) -> String {
@@ -734,7 +724,7 @@ final class AudioEngine: NSObject, ObservableObject {
     // the I/O is driven by a raw AudioDeviceIOProc on the aggregate instead:
     // the callback receives the tap's captured audio and the real device's
     // output buffers together, already clock-synced. The EQ graph runs in
-    // manual rendering mode so `AVAudioUnitEQ` still does the actual filtering.
+    // manual rendering mode, with the EQ node (`GraphicEQ`) doing the filtering.
 
     private func startProcessing() throws {
         try buildRenderGraph()
@@ -772,7 +762,7 @@ final class AudioEngine: NSObject, ObservableObject {
         ctx.inputBufferOffset = tapBufferOffset(tapChannels: tapFormat.channelCount)
 
         // The graph runs in the standard non-interleaved float format that
-        // AVAudioUnitEQ requires; the renderer converts the tap's layout to match.
+        // the EQ node requires; the renderer converts the tap's layout to match.
         // Build the graph on a brand-new AVAudioEngine. Reusing one instance
         // across sessions means repeatedly enabling and disabling manual
         // rendering mode, which leaves the graph alive but rendering silence —
@@ -780,18 +770,19 @@ final class AudioEngine: NSObject, ObservableObject {
         let engine = AVAudioEngine()
         self.engine = engine
 
-        if let owner = eqNode.engine {
-            owner.detach(eqNode)
+        let eq: AVAudioUnitEffect = eqNode.node
+        if let owner = eq.engine {
+            owner.detach(eq)
         }
-        engine.attach(eqNode)
+        engine.attach(eq)
 
         let source = AVAudioSourceNode(format: renderFormat) { _, _, frameCount, ablPtr in
             ctx.copyCapturedAudio(into: ablPtr, frameCount: frameCount)
         }
         sourceNode = source
         engine.attach(source)
-        engine.connect(source, to: eqNode, format: renderFormat)
-        engine.connect(eqNode, to: engine.mainMixerNode, format: renderFormat)
+        engine.connect(source, to: eq, format: renderFormat)
+        engine.connect(eq, to: engine.mainMixerNode, format: renderFormat)
 
         do {
             try engine.enableManualRenderingMode(.realtime, format: renderFormat, maximumFrameCount: ctx.maxFrames)
@@ -823,8 +814,8 @@ final class AudioEngine: NSObject, ObservableObject {
             engine.detach(source)
             sourceNode = nil
         }
-        if let eqNode, eqNode.engine != nil {
-            engine.detach(eqNode)
+        if let eq = eqNode?.node, eq.engine != nil {
+            engine.detach(eq)
         }
         // Drop the whole engine rather than disabling manual rendering on it:
         // the next graph gets a clean instance.
@@ -1014,22 +1005,10 @@ final class AudioEngine: NSObject, ObservableObject {
         applyBandToNode(index)
     }
 
+    /// Moving one fader changes what its neighbours must contribute, so the
+    /// whole set is handed over; the filter glides to it.
     func applyBandToNode(_ index: Int) {
-        guard let eqNode, index < eqNode.bands.count, index < bands.count else { return }
-        let effective = EQResponse.compensated(bands, sampleRate: sampleRate)
-        let band = effective[index]
-        let f = eqNode.bands[index]
-        f.filterType = band.filterType.avType
-        f.frequency = Float(band.frequency)
-        f.bandwidth = Float(band.bandwidth)
-        f.bypass = !band.isEnabled || isBypassed
-
-        // Moving one fader changes what its neighbours must contribute, so
-        // every gain is refreshed — but only written where it really moved.
-        for (i, other) in effective.enumerated() where i < eqNode.bands.count {
-            let gain = Float(other.gain)
-            if eqNode.bands[i].gain != gain { eqNode.bands[i].gain = gain }
-        }
+        syncEQNode()
     }
 
     func applyAllBands() {
@@ -1048,39 +1027,7 @@ final class AudioEngine: NSObject, ObservableObject {
         }
 
         bands = EQPreset.withLayoutBandwidth(preset.bands)
-        if eqNode.bands.count != bands.count {
-            rebuildEQNode()
-        }
         applyAllBands()
-    }
-
-    /// Swaps in a new EQ node when the band count changes.
-    ///
-    /// Only the render graph is rebuilt — the IOProc, aggregate device and tap
-    /// all stay up. Stopping the IOProc here would deactivate the tap for good
-    /// and leave the output silently muted until the user toggled the engine
-    /// off and on again. The renderer emits silence for the few milliseconds
-    /// the graph is missing.
-    private func rebuildEQNode() {
-        let wasProcessing = isRunning
-        if wasProcessing { teardownRenderGraph() }
-
-        if let existing = eqNode, let owner = existing.engine {
-            owner.detach(existing)
-        }
-        eqNode = AVAudioUnitEQ(numberOfBands: bands.count)
-        syncEQNode()
-        applyMasterGain()
-
-        guard wasProcessing else { return }
-        do {
-            try buildRenderGraph()
-            routeErrorMessage = nil
-        } catch {
-            routeErrorMessage = "\(error)"
-            NSLog("Failed to rebuild the EQ graph: \(error)")
-            stop()
-        }
     }
 
     func resetToFlat() {
@@ -1218,8 +1165,8 @@ final class AudioEngine: NSObject, ObservableObject {
     }
 
     /// Applies the stored curve for whatever device is now the output. A
-    /// profile saved at a different band count goes through `rebuildEQNode()`,
-    /// the same teardown/build path `setBandCount` uses — never `stopIOProc`.
+    /// profile saved at a different band count needs nothing special: the
+    /// EQ node takes any number of bands.
     func applyProfileForCurrentDevice() {
         guard let store = deviceProfiles, store.isEnabled,
               let uid = currentDeviceUID,
@@ -1228,16 +1175,10 @@ final class AudioEngine: NSObject, ObservableObject {
         isApplyingProfile = true
         defer { isApplyingProfile = false }
 
-        let countChanged = profile.bands.count != bands.count
         bands = EQPreset.withLayoutBandwidth(profile.bands)
         masterGain = min(Self.maxGain, max(0, profile.masterGain))
-
-        if countChanged {
-            rebuildEQNode()
-        } else {
-            applyAllBands()
-            applyMasterGain()
-        }
+        applyAllBands()
+        applyMasterGain()
         NSLog("Applied device profile for \(profile.deviceName)")
     }
 
@@ -1278,10 +1219,7 @@ final class AudioEngine: NSObject, ObservableObject {
 
     func toggleBypass() {
         isBypassed.toggle()
-        guard let eqNode else { return }
-        for i in eqNode.bands.indices {
-            eqNode.bands[i].bypass = isBypassed || (bands[safe: i]?.isEnabled ?? true) == false
-        }
+        syncEQNode()
     }
 
     // MARK: - Band Count
@@ -1309,7 +1247,6 @@ final class AudioEngine: NSObject, ObservableObject {
             )
         }
 
-        rebuildEQNode()
         applyAllBands()
     }
 

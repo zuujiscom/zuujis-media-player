@@ -14,10 +14,10 @@ import Combine
 /// purpose, so the player's output reaches the speakers directly and the
 /// player has to apply the EQ itself. The graph is
 ///
-///     AVAudioPlayerNode → AVAudioUnitEQ → limiter → mainMixer → default output
+///     AVAudioPlayerNode → EQ (`GraphicEQ`) → limiter → mainMixer → default output
 ///
 /// `AudioEngine` stays the source of truth for the bands, bypass and master
-/// gain; this class only mirrors them onto its own `AVAudioUnitEQ`.
+/// gain; this class only mirrors them onto its own EQ node.
 ///
 /// **Gapless playback.** While a track plays, the next one is already scheduled
 /// on the same player node, so the node never runs dry and the join is
@@ -200,7 +200,7 @@ final class PlayerEngine: ObservableObject {
     // engine is more reliable than reusing one after its configuration changed.
     private var engine = AVAudioEngine()
     private var player = AVAudioPlayerNode()
-    private var eqNode = AVAudioUnitEQ(numberOfBands: EQPreset.defaultBands.count)
+    private var eqNode = GraphicEQ()
     // Speed: one of the two does the work (see `applySpeed`); both are
     // bypassed at 1× so normal playback is untouched.
     private var timePitch = AVAudioUnitTimePitch()
@@ -905,7 +905,7 @@ final class PlayerEngine: ObservableObject {
     /// Builds the graph unless the existing one already fits this format.
     private func prepareGraph(for format: AVAudioFormat) throws {
         if let graphFormat, graphFormat.sampleRate == format.sampleRate,
-           graphFormat.channelCount == format.channelCount, eqNode.engine != nil {
+           graphFormat.channelCount == format.channelCount, eqNode.node.engine != nil {
             return
         }
         session += 1
@@ -924,22 +924,21 @@ final class PlayerEngine: ObservableObject {
 
         let newEngine = AVAudioEngine()
         let newPlayer = AVAudioPlayerNode()
-        let bandCount = equalizer?.bands.count ?? EQPreset.defaultBands.count
-        let newEQ = AVAudioUnitEQ(numberOfBands: bandCount)
+        let newEQ = GraphicEQ()
 
         let newTimePitch = AVAudioUnitTimePitch()
         let newVarispeed = AVAudioUnitVarispeed()
         newEngine.attach(newPlayer)
         newEngine.attach(newVarispeed)
         newEngine.attach(newTimePitch)
-        newEngine.attach(newEQ)
+        newEngine.attach(newEQ.node)
         newEngine.connect(newPlayer, to: newVarispeed, format: format)
         newEngine.connect(newVarispeed, to: newTimePitch, format: format)
-        newEngine.connect(newTimePitch, to: newEQ, format: format)
+        newEngine.connect(newTimePitch, to: newEQ.node, format: format)
         let newLimiter = LimiterUnit.makeNode()
         newLimiter.bypass = equalizer?.limiterEnabled == false
         newEngine.attach(newLimiter)
-        newEngine.connect(newEQ, to: newLimiter, format: format)
+        newEngine.connect(newEQ.node, to: newLimiter, format: format)
         newEngine.connect(newLimiter, to: newEngine.mainMixerNode, format: format)
         #if DEBUG
         // Screenshot runs play a real file for the meters; this keeps them
@@ -974,7 +973,7 @@ final class PlayerEngine: ObservableObject {
     }
 
     /// Rebuilds on a fresh engine and resumes where it was. Used when the
-    /// output device changes and when the band count does.
+    /// output device changes.
     private func rebuildGraph() {
         guard let format = graphFormat else { return }
         let wasState = state
@@ -1019,22 +1018,8 @@ final class PlayerEngine: ObservableObject {
     /// deliver it. Never write `bands[i].gain` straight to the node.
     private func applyEQ() {
         guard let equalizer else { return }
-        let effective = EQResponse.compensated(equalizer.bands, sampleRate: graphSampleRate)
-
-        // `AVAudioUnitEQ` has a fixed band count.
-        if effective.count != eqNode.bands.count {
-            rebuildGraph()
-            return
-        }
-
-        for (i, band) in effective.enumerated() {
-            let f = eqNode.bands[i]
-            f.filterType = band.filterType.avType
-            f.frequency = Float(band.frequency)
-            f.gain = Float(band.gain)
-            f.bandwidth = Float(band.bandwidth)
-            f.bypass = !band.isEnabled || equalizer.isBypassed || !equalizer.isRunning
-        }
+        eqNode.set(bands: EQResponse.compensated(equalizer.bands, sampleRate: graphSampleRate),
+                   bypassed: equalizer.isBypassed || !equalizer.isRunning)
         applyGlobalGain()
     }
 
@@ -1043,7 +1028,7 @@ final class PlayerEngine: ObservableObject {
     /// the EQ and applies either way.
     private func applyGlobalGain() {
         let preamp = equalizer?.isRunning == true ? (equalizer?.amplificationDB ?? 0) : 0
-        eqNode.globalGain = Float(min(24, max(-96, preamp + loudnessGainDB)))
+        eqNode.globalGain = min(24, max(-96, preamp + loudnessGainDB))
     }
 
     // MARK: - Metering
@@ -1055,7 +1040,7 @@ final class PlayerEngine: ObservableObject {
         let analyzer = analyzer
         let latest = latest
         let meters = equalizer?.meters
-        eqNode.installTap(onBus: 0, bufferSize: 2048, format: nil) { [weak self] buffer, _ in
+        eqNode.node.installTap(onBus: 0, bufferSize: 2048, format: nil) { [weak self] buffer, _ in
             guard let channel = buffer.floatChannelData?[0] else { return }
             let total = Int(buffer.frameLength)
             guard total > 0 else { return }
@@ -1124,8 +1109,8 @@ final class PlayerEngine: ObservableObject {
     /// `removeTap` throws an Objective-C exception on a node that is not
     /// attached to an engine, which is the case before the first graph exists.
     private func removeMeterTap() {
-        guard eqNode.engine != nil else { return }
-        eqNode.removeTap(onBus: 0)
+        guard eqNode.node.engine != nil else { return }
+        eqNode.node.removeTap(onBus: 0)
     }
 
     /// Silence must read as silence: with the tap stopped, the last frame would

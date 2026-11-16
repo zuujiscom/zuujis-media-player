@@ -29,21 +29,30 @@ The rules that came out of this work are in [AGENTS.md](../AGENTS.md); this file
 | Playing a loud song | The LIMIT light blinked off and back on every 2 s (the silent route reports a zero peak 20 times a second, which cleared the light the moment its hold ran out); each blink ran a 0.15 s animation that rendered the whole window on every frame | The light goes out only after a full hold with no peak (`MeterState.lastOver`); no fade on the light | 11–15% → 6–9% |
 | Paused, EQ on | The player's `AVAudioEngine` kept pulling silence through the EQ and limiter (~3%), and the spectrum views ticked 30 times a second over nothing | `PlayerEngine.restEngineSoon()` pauses the engine 3 s after a pause (resume restarts from the paused frame on the seek path); `LiveMeterView` touches no layer after 5 s of silence | 4.2% → ~1.3% |
 | Playing | `outputNode.presentationLatency` is a ~4 ms round trip to the audio server, read once a second | Read every 5 s (still reset when the graph is rebuilt) | ~0.8% → ~0.15% |
+| Playing, EQ on | Apple's `AVAudioUnitEQ`: 31 stereo bands cost about 2.0% of a core on the audio thread (59 of 2,938 samples) | `Models/BiquadEQ.swift`, the app's own cascade in an in-process audio unit (`Audio/EQUnit.swift`), on both audio paths. Sections run staggered so the processor overlaps them | EQ share 2.0% → ~0.45%; whole app about 8.7% → 6–8% on the same song |
 
-## Current state (2026-11-16, after the fixes above, not yet committed when written)
+## Current state (2026-11-16, after the fixes above)
 
-EQ on, library + faders + lyrics shown, pointer still, nothing else making sound:
+EQ on (31 bands, Loudness preset), library + faders + lyrics shown, pointer still, nothing else making sound:
 
-- Playing: about 6%, up to 9% on a song with word-timed lyrics. Main thread ~4–6% of a core (30 Hz layer timers, scrubber, lyrics), player audio thread ~3% (Apple's 31-band EQ is most of it), route thread ~0.3%.
-- Paused: about 1.3%. Stopped or EQ off and idle: about 0.3%.
-- Another app playing through the EQ adds about 4.5% (the route's EQ doing real work).
+- Playing: about 6%, up to 8% in passages with word-timed lyrics. Main thread ~4–6% of a core (30 Hz layer timers, scrubber, lyrics), player audio thread ~2% (EQ ~0.45%, the rest is the limiter, mixer, converter and decoding), route thread ~0.3%.
+- Paused: about 1.2%. Stopped or EQ off and idle: about 0.3%.
+- Another app playing through the EQ: not re-measured since the new filter (it was about 4.5% with Apple's EQ).
 
 For comparison, Apple Music plays at 3–5% and about 125 MB; this app uses about 125 MB after a fresh launch and has been seen at 210 MB (not looked at yet).
 
+### The EQ filter, measured (31 stereo bands, one second of 48 kHz audio, on a fast core)
+
+| Filter | Time | Note |
+|---|---|---|
+| `vDSP_biquadm` (single precision) | 3.8 ms | Error against double precision: -66 dB at 48 kHz, -46 dB at 192 kHz. Not usable. |
+| `vDSP_biquadmD` | 3.8–4.4 ms | In the app it was 1.25% of a core against Apple's 2.0%: the audio thread runs on slower cores than a benchmark does. |
+| `BiquadEQ.cascade` (staggered, `SIMD2<Double>`) | 1.5 ms | Bit-identical output to `vDSP_biquadmD`. 0.45% of a core in the app. |
+
 ## Ideas not done
 
-- Apple's `AVAudioUnitEQ` costs about 3.6% of a core for 31 stereo bands. A `vDSP_biquadm` cascade would likely be several times cheaper, but it replaces the filter in both audio paths and needs the full audio-route checklist.
-- Bypassing bands that sit at exactly 0 dB saves little in practice: the gains sent to the node are compensated for neighbouring bands, so few are exactly zero.
+- The EQ could go further by filtering four sections at a time with wider vectors; at 0.45% of a core there is little left to win.
+- The player's limiter node and Apple's mixer and converter are now the larger part of the audio thread (about 1.5% together).
 - `ScrubberView.refresh` converts colours and builds a path 10 times a second (about 0.8% of a core).
 - A few window re-renders still show in samples during playback (8–32 samples in 5 s); the trigger is not identified. No SwiftUI `body` runs in them, so it is an animation or an AppKit layout pass.
 - The ~2 s bump when a track changes is not broken down yet (a widget update shows in the sample).
@@ -51,4 +60,4 @@ For comparison, Apple Music plays at 3–5% and about 125 MB; this app uses abou
 
 ## Not yet checked by hand
 
-Resume after a long pause across an output-device change; the route picking up another app's sound after hours of silence; scrubber drag-seek, hover knob and VoiceOver; lyrics click-to-seek, scroll and hover; Light theme for the layer views; fader scroll wheel, context menu and tooltips.
+The new EQ filter by ear (a sweep of one fader while a song plays, preset changes, bypass), and the audio-route checklist sections 3–5 with it (output switches, permission, sleep; sections 1–2 were run by script on 2026-11-16); resume after a long pause across an output-device change; the route picking up another app's sound after hours of silence; scrubber drag-seek, hover knob and VoiceOver; lyrics click-to-seek, scroll and hover; Light theme for the layer views; fader scroll wheel, context menu and tooltips.

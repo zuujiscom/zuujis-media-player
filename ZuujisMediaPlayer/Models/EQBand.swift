@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import Foundation
-import AVFoundation
 
 struct EQBand: Identifiable, Codable, Equatable {
     let id: UUID
@@ -42,18 +41,6 @@ struct EQBand: Identifiable, Codable, Equatable {
         case highPass = "High Pass"
         case bandPass = "Band Pass"
         case notch = "Notch"
-
-        var avType: AVAudioUnitEQFilterType {
-            switch self {
-            case .parametric: return .parametric
-            case .lowShelf: return .lowShelf
-            case .highShelf: return .highShelf
-            case .lowPass: return .lowPass
-            case .highPass: return .highPass
-            case .bandPass: return .bandPass
-            case .notch: return .bandPass // Notch not available; approximate with band pass
-            }
-        }
 
         var shortName: String {
             switch self {

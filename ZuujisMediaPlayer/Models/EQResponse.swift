@@ -2,13 +2,13 @@
 
 import Foundation
 
-/// The combined frequency response of a set of bands: a model of what
-/// `AVAudioUnitEQ` does, built from the standard audio-EQ-cookbook biquads.
-/// For parametric bands it is not an approximation — measured against the
-/// real unit rendered offline, it agrees to within 0.01 dB.
+/// The bands as filters: the standard audio-EQ-cookbook biquads, with the
+/// definitions `AVAudioUnitEQ` uses (bandwidth in octaves), which the app
+/// filtered with before `BiquadEQ`.
 ///
-/// It has two jobs. It draws the curve, and it works out the gains the unit
-/// is actually given (`compensated`), which is why its accuracy matters.
+/// It has three jobs. Its sections are the ones `BiquadEQ` runs, it draws the
+/// curve from them, and it works out the gains the filter is actually given
+/// (`compensated`).
 enum EQResponse {
     // MARK: Gain compensation
 
@@ -112,14 +112,16 @@ enum EQResponse {
         return sections.reduce(0) { $0 + $1.decibels(at: w) }
     }
 
-    private static func section(for band: EQBand, sampleRate: Double) -> Biquad? {
+    /// One band's section, or nil when it changes nothing (a peak or shelf
+    /// at 0 dB). `BiquadEQ` filters with exactly these.
+    static func section(for band: EQBand, sampleRate: Double) -> Biquad? {
         let frequency = min(max(band.frequency, 10), sampleRate * 0.49)
         let w0 = 2 * Double.pi * frequency / sampleRate
         let cosW = cos(w0)
         let sinW = sin(w0)
         let a = pow(10, band.gain / 40)
         let bandwidth = min(max(band.bandwidth, 0.05), 5)
-        // Bandwidth in octaves, the unit AVAudioUnitEQ uses.
+        // Bandwidth in octaves.
         let alphaBW = sinW * sinh(log(2) / 2 * bandwidth * w0 / max(sinW, 1e-9))
         let alphaQ = sinW / (2 * 0.7071)
 
@@ -154,7 +156,7 @@ enum EQResponse {
             b0 = (1 + cosW) / 2; b1 = -(1 + cosW); b2 = (1 + cosW) / 2
             a0 = 1 + alphaQ; a1 = -2 * cosW; a2 = 1 - alphaQ
         case .bandPass, .notch:
-            // The engine maps Notch to a band pass too; see `EQBand.avType`.
+            // Notch has always been a band pass here, since `AVAudioUnitEQ` had no notch.
             b0 = alphaBW; b1 = 0; b2 = -alphaBW
             a0 = 1 + alphaBW; a1 = -2 * cosW; a2 = 1 - alphaBW
         }

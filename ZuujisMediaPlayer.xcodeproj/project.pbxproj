@@ -12,9 +12,11 @@
 		4FBD593B480266CFDE08D108 /* LiveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F75F1D4662988C200741D /* LiveViews.swift */; };
 		FABA1AACAFB7E78731682CE0 /* LoudnessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */; };
 		261E5AEE368C23DBDE225A8C /* LimiterUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDE789C2F61574CEBA8E7E0D /* LimiterUnit.swift */; };
+		A1E0B1C0D2E3F40516273801 /* EQUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E0B1C0D2E3F40516273802 /* EQUnit.swift */; };
 		0B6E55AE3A87275057DD287C /* ReplayGainTags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA858080551B282758F4252 /* ReplayGainTags.swift */; };
 		4FBDD77C553FE0B0FCD965B9 /* Loudness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E176BC1146163FC247E8748 /* Loudness.swift */; };
 		9070B3C06297F2E9C37589E2 /* Limiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 634B718303E0CF65C08B39CB /* Limiter.swift */; };
+		A1E0B1C0D2E3F40516273803 /* BiquadEQ.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E0B1C0D2E3F40516273804 /* BiquadEQ.swift */; };
 		5DF4D63B9A6B6EB41ACF8546 /* ImmersiveRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCCB45FDB2F4940D54051B2C /* ImmersiveRenderer.swift */; };
 		30E0473616D1F34F2ADE0A5D /* ImmersiveShaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 616FA9D03F5D4AF97A024805 /* ImmersiveShaders.swift */; };
 		30033A5F10AB6467D89EA51D /* SavedFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D577BFB2309E7DC399B43F5B /* SavedFile.swift */; };
@@ -81,9 +83,11 @@
 		8A7F75F1D4662988C200741D /* LiveViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveViews.swift; sourceTree = "<group>"; };
 		5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessStore.swift; sourceTree = "<group>"; };
 		DDE789C2F61574CEBA8E7E0D /* LimiterUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterUnit.swift; sourceTree = "<group>"; };
+		A1E0B1C0D2E3F40516273802 /* EQUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EQUnit.swift; sourceTree = "<group>"; };
 		3DA858080551B282758F4252 /* ReplayGainTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayGainTags.swift; sourceTree = "<group>"; };
 		2E176BC1146163FC247E8748 /* Loudness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Loudness.swift; sourceTree = "<group>"; };
 		634B718303E0CF65C08B39CB /* Limiter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Limiter.swift; sourceTree = "<group>"; };
+		A1E0B1C0D2E3F40516273804 /* BiquadEQ.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiquadEQ.swift; sourceTree = "<group>"; };
 		BCCB45FDB2F4940D54051B2C /* ImmersiveRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveRenderer.swift; sourceTree = "<group>"; };
 		616FA9D03F5D4AF97A024805 /* ImmersiveShaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveShaders.swift; sourceTree = "<group>"; };
 		D577BFB2309E7DC399B43F5B /* SavedFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedFile.swift; sourceTree = "<group>"; };
@@ -253,6 +257,7 @@
 				200000000000000000000070 /* PlayerEngine.swift */,
 				2000000000000000000000A1 /* OutputRate.swift */,
 				DDE789C2F61574CEBA8E7E0D /* LimiterUnit.swift */,
+				A1E0B1C0D2E3F40516273802 /* EQUnit.swift */,
 				200000000000000000000072 /* NowPlaying.swift */,
 			);
 			path = Audio;
@@ -269,6 +274,7 @@
 				3DA858080551B282758F4252 /* ReplayGainTags.swift */,
 				2E176BC1146163FC247E8748 /* Loudness.swift */,
 				634B718303E0CF65C08B39CB /* Limiter.swift */,
+				A1E0B1C0D2E3F40516273804 /* BiquadEQ.swift */,
 				2000000000000000000000B1 /* LibraryModel.swift */,
 				2000000000000000000000C1 /* TagWriter.swift */,
 				2000000000000000000000D1 /* Playlist.swift */,
@@ -455,6 +461,7 @@
 				100000000000000000000070 /* PlayerEngine.swift in Sources */,
 				1000000000000000000000A1 /* OutputRate.swift in Sources */,
 				261E5AEE368C23DBDE225A8C /* LimiterUnit.swift in Sources */,
+				A1E0B1C0D2E3F40516273801 /* EQUnit.swift in Sources */,
 				100000000000000000000072 /* NowPlaying.swift in Sources */,
 				100000000000000000000005 /* AudioDevice.swift in Sources */,
 				100000000000000000000006 /* EQBand.swift in Sources */,
@@ -478,6 +485,7 @@
 				0B6E55AE3A87275057DD287C /* ReplayGainTags.swift in Sources */,
 				4FBDD77C553FE0B0FCD965B9 /* Loudness.swift in Sources */,
 				9070B3C06297F2E9C37589E2 /* Limiter.swift in Sources */,
+				A1E0B1C0D2E3F40516273803 /* BiquadEQ.swift in Sources */,
 				1000000000000000000000B1 /* LibraryModel.swift in Sources */,
 				1000000000000000000000C1 /* TagWriter.swift in Sources */,
 				1000000000000000000000D1 /* Playlist.swift in Sources */,
