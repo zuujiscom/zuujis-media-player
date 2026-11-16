@@ -14,7 +14,17 @@ import Combine
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var folders: [URL] = []
-    @Published private(set) var tracks: [LibraryTrack] = []
+    @Published private(set) var tracks: [LibraryTrack] = [] { didSet { pathIndex = nil } }
+    /// `tracks` by file path, built when first asked after a change.
+    private var pathIndex: [String: LibraryTrack]?
+
+    /// The library's entry for a file, if it has one.
+    func track(atPath path: String) -> LibraryTrack? {
+        if pathIndex == nil {
+            pathIndex = Dictionary(tracks.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+        return pathIndex?[path]
+    }
     /// Tag edits by file path, laid over what the files say.
     private(set) var edits: [String: TagEdit] = [:]
     @Published private(set) var offlineFolders: Set<URL> = []

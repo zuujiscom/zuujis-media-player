@@ -194,6 +194,7 @@ final class StageSpectrumView: LiveMeterView {
 struct StageSpectrum: View {
     var body: some View {
         LiveMeter { StageSpectrumView(engine: $0, player: $1) }
+            .allowsHitTesting(false)
     }
 }
 
@@ -379,6 +380,7 @@ final class ResponseSpectrumView: LiveMeterView {
 struct ResponseSpectrum: View {
     var body: some View {
         LiveMeter { ResponseSpectrumView(engine: $0, player: $1) }
+            .allowsHitTesting(false)
     }
 }
 
@@ -437,6 +439,7 @@ final class LevelBarView: LiveMeterView {
 struct LiveLevelMeter: View {
     var body: some View {
         LiveMeter { LevelBarView(engine: $0, player: $1) }
+            .allowsHitTesting(false)
     }
 }
 
@@ -477,6 +480,7 @@ final class LatencyTextView: LiveMeterView {
 struct LatencyChip: View {
     var body: some View {
         LiveMeter { LatencyTextView(engine: $0, player: $1) }
+            .allowsHitTesting(false)
     }
 }
 

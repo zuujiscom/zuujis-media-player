@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		91FFCAA9A3555FC98D1D7163 /* PointerThrottle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA798B626234E4FC59D4A0EA /* PointerThrottle.swift */; };
 		3C67A2E9F91C1B393CA2FC68 /* LyricsLayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C720F9882233004EF3EE8EF /* LyricsLayerView.swift */; };
 		4FBD593B480266CFDE08D108 /* LiveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F75F1D4662988C200741D /* LiveViews.swift */; };
 		FABA1AACAFB7E78731682CE0 /* LoudnessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */; };
@@ -75,6 +76,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		FA798B626234E4FC59D4A0EA /* PointerThrottle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointerThrottle.swift; sourceTree = "<group>"; };
 		9C720F9882233004EF3EE8EF /* LyricsLayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsLayerView.swift; sourceTree = "<group>"; };
 		8A7F75F1D4662988C200741D /* LiveViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveViews.swift; sourceTree = "<group>"; };
 		5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessStore.swift; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* ZuujisMediaPlayerApp.swift */,
+				FA798B626234E4FC59D4A0EA /* PointerThrottle.swift */,
 				C217D6C19BA06827E34A7043 /* LaunchAtLogin.swift */,
 				BE37422B81B1AAA68A25FA72 /* WidgetBridge.swift */,
 			);
@@ -443,6 +446,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000001 /* ZuujisMediaPlayerApp.swift in Sources */,
+				91FFCAA9A3555FC98D1D7163 /* PointerThrottle.swift in Sources */,
 				26E10BF39B663B04404D73E9 /* LaunchAtLogin.swift in Sources */,
 				4E7CCF5DDCF124CE7F0FB9B3 /* WidgetBridge.swift in Sources */,
 				100000000000000000000002 /* AudioEngine.swift in Sources */,

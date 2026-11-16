@@ -124,14 +124,27 @@ final class PlaybackQueue: ObservableObject {
     @discardableResult
     func add(urls: [URL], replacing: Bool = false) -> [QueueItem] {
         let files = Self.audioFiles(in: urls)
-        let added = files.map { QueueItem(url: $0) }
+        // Songs the library already knows arrive with their tags; only the
+        // rest are read from disk. Playing a song from the library queues the
+        // whole list, and re-reading a thousand files kept the CPU busy for
+        // seconds on every such click.
+        var unread: [QueueItem.ID] = []
+        let added = files.map { url -> QueueItem in
+            var item = QueueItem(url: url)
+            if let known = knownMetadata?(url) {
+                Self.fill(&item, from: known)
+            } else {
+                unread.append(item.id)
+            }
+            return item
+        }
         if replacing {
             currentID = nil
             items = added
         } else {
             items.append(contentsOf: added)
         }
-        loadMetadata(for: added.map(\.id))
+        loadMetadata(for: unread)
         scheduleSave()
         return added
     }
@@ -247,22 +260,45 @@ final class PlaybackQueue: ObservableObject {
             await withTaskGroup(of: (QueueItem.ID, TrackMetadata).self) { group in
                 func next() { if let (id, url) = iterator.next() { group.addTask { (id, await TrackMetadata.read(url)) } } }
                 for _ in 0..<4 { next() }
-                for await (id, meta) in group {
-                    self?.apply(meta, to: id)
+                // Applied in batches: every change to `items` redraws the
+                // views that show the queue.
+                var batch: [(QueueItem.ID, TrackMetadata)] = []
+                for await result in group {
+                    batch.append(result)
+                    if batch.count >= 40 {
+                        self?.apply(batch)
+                        batch = []
+                    }
                     next()
                 }
+                self?.apply(batch)
             }
         }
     }
 
-    private func apply(_ meta: TrackMetadata, to id: QueueItem.ID) {
-        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
-        var item = items[i]
+    /// Tags for a file without reading it, when something already has them
+    /// (the library). Set once at launch.
+    var knownMetadata: ((URL) -> TrackMetadata?)?
+
+    private static func fill(_ item: inout QueueItem, from meta: TrackMetadata) {
         if let title = meta.title, !title.isEmpty { item.title = title }
         item.artist = meta.artist
         item.album = meta.album
         item.duration = meta.duration
-        if item != items[i] { items[i] = item }
+    }
+
+    private func apply(_ batch: [(QueueItem.ID, TrackMetadata)]) {
+        guard !batch.isEmpty else { return }
+        let found = Dictionary(batch, uniquingKeysWith: { _, last in last })
+        var changed = items
+        var any = false
+        for i in changed.indices {
+            guard let meta = found[changed[i].id] else { continue }
+            var item = changed[i]
+            Self.fill(&item, from: meta)
+            if item != changed[i] { changed[i] = item; any = true }
+        }
+        if any { items = changed }
     }
 
     // MARK: - Persistence

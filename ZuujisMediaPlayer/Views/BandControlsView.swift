@@ -359,7 +359,11 @@ struct VerticalGainSlider: View {
                     .frame(width: capWidth, height: Self.knobSize)
                     .position(x: midX, y: knobY)
             }
-            .contentShape(Rectangle())
+            // The drawing takes no part in hit-testing; one clear layer over
+            // it does. SwiftUI hit-tests the window on every pointer move,
+            // and a dozen shapes in each of 31 faders made that slow.
+            .allowsHitTesting(false)
+            .overlay(Color.clear.contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { drag in
@@ -368,11 +372,13 @@ struct VerticalGainSlider: View {
             )
             // Runs after the drag has moved the cap to the click, so the
             // second click of a double-click lands on zero.
-            .simultaneousGesture(TapGesture(count: 2).onEnded { set(0) })
+            .simultaneousGesture(TapGesture(count: 2).onEnded { set(0) }))
         }
+        // It listens with an event monitor and never takes a click, so it is
+        // left out of hit-testing too (an AppKit view is the slowest kind).
         .background(ScrollWheelReader { steps in
             set(value + Double(steps) * step)
-        })
+        }.allowsHitTesting(false))
         .accessibilityElement()
         .accessibilityLabel(label)
         .accessibilityValue(String(format: "%+0.1f decibels", value))
@@ -555,7 +561,7 @@ struct PeakLight: View {
     @ObservedObject var clip: ClipLevel
 
     var body: some View {
-        let over = clip.overDB > 0
+        let over = clip.isOver
         let limiting = engine.limiterEnabled
         let tint = limiting ? Theme.amber : Theme.red
         Button { engine.limiterEnabled.toggle() } label: {

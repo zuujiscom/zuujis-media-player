@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One main window, no tabs: this also keeps "Show Tab Bar" and
         // "Show All Tabs" out of the View menu.
         NSWindow.allowsAutomaticWindowTabbing = false
+        PointerThrottle.install()
 
         // Started by the system at login: stay in the menu bar instead of
         // putting a window in the user's face. The window is only hidden, so
@@ -615,6 +616,14 @@ struct ZuujisMediaPlayerApp: App {
     /// be safe to call twice.
     private func bootstrap() {
         player.attach(to: audioEngine)
+        // The queue takes tags from the library when it has them.
+        player.queue.knownMetadata = { [library] url in
+            library.track(atPath: url.path).map {
+                TrackMetadata(title: $0.title, artist: $0.artist, album: $0.album, genre: $0.genre,
+                              trackNumber: $0.trackNumber, discNumber: $0.discNumber, year: $0.year,
+                              duration: $0.duration)
+            }
+        }
         lyrics.attach(to: player)
         AppDelegate.openHandler = { player.openFromFinder($0) }
         AppDelegate.saveOnQuit = {

@@ -1343,12 +1343,15 @@ struct MeterSnapshot {
 /// How far past full scale the output went, for the clip light. See `MeterState.clip`.
 @MainActor
 final class ClipLevel: ObservableObject {
-    @Published private(set) var overDB: Double = 0
-    /// Rounded to a tenth of a dB, so a run of peaks at nearly the same level
-    /// does not redraw the light for each one.
+    /// Read when it is wanted (the light's tooltip, diagnostics); not
+    /// published. With a hot preamp it changes several times a second, and
+    /// each change redrew the light and re-laid out the main window.
+    private(set) var overDB: Double = 0
+    /// Whether anything is over full scale: all the light draws from.
+    @Published private(set) var isOver = false
     func set(_ db: Double) {
-        let rounded = (db * 10).rounded() / 10
-        if rounded != overDB { overDB = rounded }
+        overDB = (db * 10).rounded() / 10
+        if (overDB > 0) != isOver { isOver = overDB > 0 }
     }
 }
 
