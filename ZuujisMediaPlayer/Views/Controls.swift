@@ -45,8 +45,10 @@ struct VolumeControl: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(player.volume < 0.01 ? "Unmute" : "Mute")
             GlowSlider(value: Binding(get: { Double(player.volume) },
-                                      set: { player.volume = Float($0) }))
+                                      set: { player.volume = Float($0) }),
+                       label: "Volume")
                 .frame(width: sliderWidth)
         }
         .help("Player volume  (⌘↑ / ⌘↓)")
@@ -80,6 +82,8 @@ struct ChipToggle: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }

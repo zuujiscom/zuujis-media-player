@@ -150,6 +150,9 @@ struct GlowSlider: View {
     var colors: [Color] = Theme.signalColors
     var isEnabled = true
     var onEditingChanged: (Bool) -> Void = { _ in }
+    /// What VoiceOver calls the slider, and how it reads the value (a percentage when nil).
+    var label: String = ""
+    var valueText: ((Double) -> String)?
 
     @State private var hovering = false
     @State private var dragging = false
@@ -206,10 +209,14 @@ struct GlowSlider: View {
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(isEnabled)
         .accessibilityElement()
-        .accessibilityValue(String(format: "%.0f percent",
+        .accessibilityLabel(label)
+        .accessibilityValue(valueText?(value) ?? String(format: "%.0f percent",
                                    (value - range.lowerBound) / max(range.upperBound - range.lowerBound, 0.0001) * 100))
         .accessibilityAdjustableAction { direction in
+            guard isEnabled else { return }
             let nudge = (range.upperBound - range.lowerBound) / 20
+            onEditingChanged(true)
+            defer { onEditingChanged(false) }
             switch direction {
             case .increment: value = min(range.upperBound, value + nudge)
             case .decrement: value = max(range.lowerBound, value - nudge)

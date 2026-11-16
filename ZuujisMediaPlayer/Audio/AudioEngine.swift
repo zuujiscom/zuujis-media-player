@@ -53,6 +53,20 @@ final class AudioEngine: NSObject, ObservableObject {
     /// presets are for.
     private static let masterGainKey = "masterGain"
 
+    // MARK: - Limiter
+
+    /// The limiter after the EQ, on both audio paths: peaks that the preamp, a
+    /// boosted band or a loudness gain would push past full scale are turned
+    /// down for that moment instead of clipping. On unless the user turns it
+    /// off. The system route runs `SoftLimiter` in its IOProc; the file player
+    /// mirrors this onto its own limiter node.
+    @Published var limiterEnabled: Bool = UserDefaults.standard.object(forKey: "limiterEnabled") as? Bool ?? true {
+        didSet {
+            renderer.limiterEnabled = limiterEnabled
+            UserDefaults.standard.set(limiterEnabled, forKey: "limiterEnabled")
+        }
+    }
+
     static let maxGain: Double = 15.85   // ≈ +24 dB
     static let maxBandGain: Double = 24.0
     static let minBandGain: Double = -24.0
@@ -144,6 +158,7 @@ final class AudioEngine: NSObject, ObservableObject {
             _masterGain = Published(initialValue: min(Self.maxGain, max(0, stored)))
         }
 
+        renderer.limiterEnabled = limiterEnabled
         enumerateDevices()
         setupEngine()
     }
@@ -786,9 +801,12 @@ final class AudioEngine: NSObject, ObservableObject {
             throw AudioRouteError.manualRenderingFailed(error.localizedDescription)
         }
 
+        // A fresh limiter with each graph: it is built for this rate and
+        // channel count, and starts with an empty delay line.
         ctx.setRenderTarget(
             block: engine.manualRenderingBlock,
-            buffer: AVAudioPCMBuffer(pcmFormat: renderFormat, frameCapacity: ctx.maxFrames)
+            buffer: AVAudioPCMBuffer(pcmFormat: renderFormat, frameCapacity: ctx.maxFrames),
+            limiter: SoftLimiter(sampleRate: renderFormat.sampleRate, channels: Int(renderFormat.channelCount))
         )
 
         inputFormat = formatDescription(tapFormat)
@@ -798,7 +816,7 @@ final class AudioEngine: NSObject, ObservableObject {
     /// Tears the EQ graph down while leaving the IOProc (and therefore the tap)
     /// running. The renderer outputs silence until a new graph is installed.
     private func teardownRenderGraph() {
-        renderer.setRenderTarget(block: nil, buffer: nil)
+        renderer.setRenderTarget(block: nil, buffer: nil, limiter: nil)
 
         if engine.isRunning { engine.stop() }
         if let source = sourceNode {
@@ -948,7 +966,8 @@ final class AudioEngine: NSObject, ObservableObject {
         meters.publishRoute(MeterSnapshot(
             spectrum: fftAnalyzer.analyze(buffer: buffer),
             level: min(1.0, buffer.rms * 3.0),
-            latencyMs: steadyLatency(renderer.latencyMs)
+            latencyMs: steadyLatency(renderer.latencyMs),
+            peak: renderer.takePeak()
         ))
     }
 
@@ -1296,6 +1315,9 @@ struct MeterSnapshot {
     var spectrum: [Float] = Array(repeating: 0, count: 64)
     var level: Double = 0
     var latencyMs: Double = 0
+    /// The largest sample since the last snapshot, after the EQ and before the
+    /// limiter. Over 1.0 is past full scale: it clips, or the limiter catches it.
+    var peak: Float = 0
 }
 
 /// What the response graph, level meter and visualizer read. Two things feed
@@ -1314,9 +1336,27 @@ final class MeterState: ObservableObject {
 
     var playerOwnsMeters: Bool { playerLive && Date() < playerActiveUntil }
 
+    /// How far past full scale the output went, in dB, held for a couple of
+    /// seconds so a single peak can be seen. Zero when nothing went over.
+    @Published private(set) var overDB: Double = 0
+    private var overUntil = Date.distantPast
+    private static let overHold: TimeInterval = 2
+
+    private func note(peak: Float) {
+        let now = Date()
+        if peak > 1 {
+            let db = Double(20 * log10(peak))
+            if db >= overDB || now >= overUntil { overDB = db }
+            overUntil = now.addingTimeInterval(Self.overHold)
+        } else if overDB != 0, now >= overUntil {
+            overDB = 0
+        }
+    }
+
     /// From the system route's 20 Hz timer. Ignored while the player is live,
     /// except for the latency figure.
     func publishRoute(_ new: MeterSnapshot) {
+        note(peak: new.peak)
         if playerOwnsMeters {
             setLatency(new.latencyMs)
         } else {
@@ -1328,6 +1368,7 @@ final class MeterState: ObservableObject {
     func publishPlayer(_ new: MeterSnapshot) {
         playerLive = true
         playerActiveUntil = Date().addingTimeInterval(1.0)
+        note(peak: new.peak)
         var next = new
         next.latencyMs = snapshot.latencyMs
         snapshot = next
@@ -1342,6 +1383,7 @@ final class MeterState: ObservableObject {
     func clearRoute() {
         guard !playerOwnsMeters else { return }
         snapshot = MeterSnapshot()
+        overDB = 0
     }
 
     /// The player stopped or paused. The route takes the meters back on its
@@ -1349,7 +1391,10 @@ final class MeterState: ObservableObject {
     func clearPlayer(routeRunning: Bool) {
         playerLive = false
         playerActiveUntil = .distantPast
-        if !routeRunning { snapshot = MeterSnapshot(latencyMs: snapshot.latencyMs) }
+        if !routeRunning {
+            snapshot = MeterSnapshot(latencyMs: snapshot.latencyMs)
+            overDB = 0
+        }
     }
 }
 
@@ -1368,12 +1413,23 @@ final class SystemAudioRenderer: @unchecked Sendable {
 
     /// Points the IOProc at a new EQ graph (or, with `nil`, at silence while
     /// one is being rebuilt). Blocks only for the length of one render call.
-    func setRenderTarget(block: AVAudioEngineManualRenderingBlock?, buffer: AVAudioPCMBuffer?) {
+    func setRenderTarget(block: AVAudioEngineManualRenderingBlock?, buffer: AVAudioPCMBuffer?, limiter: SoftLimiter?) {
         renderLock.lock()
         renderBlock = block
         renderBuffer = buffer
+        self.limiter = limiter
+        limiterWasOn = false
         renderLock.unlock()
     }
+
+    /// The last stage before the device: see `SoftLimiter`. Guarded by
+    /// `renderLock` like the render target. `limiterEnabled` is a plain flag
+    /// the main actor flips; the IOProc reads it once a cycle.
+    private var limiter: SoftLimiter?
+    private var limiterWasOn = false
+    var limiterEnabled = true
+    /// Largest sample rendered since `takePeak()`, before the limiter.
+    private var pendingPeak: Float = 0
 
     var inputASBD = AudioStreamBasicDescription()
     var outputASBD = AudioStreamBasicDescription()
@@ -1509,8 +1565,30 @@ final class SystemAudioRenderer: @unchecked Sendable {
             return
         }
 
+        let peak = limit(renderBuffer, frames: frames)
         write(renderBuffer, frames: frames, to: outList)
-        captureForMetering(renderBuffer, frames: frames)
+        captureForMetering(renderBuffer, frames: frames, peak: peak)
+    }
+
+    /// Runs the limiter over the rendered frames in place (when it is on) and
+    /// returns the largest sample from before it. Realtime: no allocation.
+    private func limit(_ buffer: AVAudioPCMBuffer, frames: AVAudioFrameCount) -> Float {
+        guard let data = buffer.floatChannelData else { return 0 }
+        let channels = Int(buffer.format.channelCount)
+        let on = limiterEnabled
+        defer { limiterWasOn = on }
+        if on, let limiter {
+            // Switched back on: do not play what was left in its delay line.
+            if !limiterWasOn { limiter.reset() }
+            return limiter.process(data, channels: channels, frames: Int(frames))
+        }
+        var peak: Float = 0
+        for channel in 0..<channels {
+            var channelPeak: Float = 0
+            vDSP_maxmgv(data[channel], 1, &channelPeak, vDSP_Length(frames))
+            if channelPeak > peak { peak = channelPeak }
+        }
+        return peak
     }
 
     private func silence(_ outList: UnsafeMutableAudioBufferListPointer) {
@@ -1552,9 +1630,10 @@ final class SystemAudioRenderer: @unchecked Sendable {
         }
     }
 
-    private func captureForMetering(_ buffer: AVAudioPCMBuffer, frames: AVAudioFrameCount) {
+    private func captureForMetering(_ buffer: AVAudioPCMBuffer, frames: AVAudioFrameCount, peak: Float) {
         guard let channelData = buffer.floatChannelData, scratchLock.try() else { return }
         defer { scratchLock.unlock() }
+        if peak > pendingPeak { pendingPeak = peak }
 
         let capacity = scratch.count
         let source = channelData[0]
@@ -1587,6 +1666,16 @@ final class SystemAudioRenderer: @unchecked Sendable {
         for i in scratch.indices { scratch[i] = 0 }
         scratchWriteIndex = 0
         scratchFilled = false
+        pendingPeak = 0
+    }
+
+    /// The largest sample since the last call, for the clip light.
+    func takePeak() -> Float {
+        scratchLock.lock()
+        defer { scratchLock.unlock() }
+        let peak = pendingPeak
+        pendingPeak = 0
+        return peak
     }
 
     /// Snapshot of the most recent rendered audio, oldest sample first, for

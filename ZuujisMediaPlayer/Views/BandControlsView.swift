@@ -244,7 +244,8 @@ struct BandSlider: View {
                 value: $band.gain,
                 range: gainRange,
                 step: 0.5,
-                tint: gainColor
+                tint: gainColor,
+                label: "\(band.frequencyLabel) gain"
             )
             .frame(width: columnWidth, height: trackLength)
             .opacity(band.isEnabled ? 1 : 0.35)
@@ -270,6 +271,9 @@ struct BandSlider: View {
             }
             .buttonStyle(.plain)
             .help(band.isEnabled ? "Disable band" : "Enable band")
+            .accessibilityLabel("\(band.frequencyLabel) band")
+            .accessibilityValue(band.isEnabled ? "On" : "Off")
+            .accessibilityHint(band.isEnabled ? "Turns this band off" : "Turns this band on")
 
             Text("Off")
                 .font(.system(size: 8))
@@ -364,6 +368,7 @@ struct VerticalGainSlider: View {
     let range: ClosedRange<Double>
     let step: Double
     let tint: Color
+    var label = "Gain"
 
     /// The cap's height; also the travel lost at each end of the track.
     private static let knobSize: CGFloat = 14
@@ -436,7 +441,7 @@ struct VerticalGainSlider: View {
             set(value + Double(steps) * step)
         })
         .accessibilityElement()
-        .accessibilityLabel("Gain")
+        .accessibilityLabel(label)
         .accessibilityValue(String(format: "%+0.1f decibels", value))
         .accessibilityAdjustableAction { direction in
             switch direction {
@@ -572,7 +577,9 @@ struct PreampRow: View {
                 .foregroundStyle(Theme.ink.opacity(0.45))
             GlowSlider(value: $engine.masterGain, range: 0.25...AudioEngine.maxGain, step: 0.05,
                        colors: engine.amplificationDB > 12 ? [Theme.mint, Theme.amber, Theme.red]
-                                                           : [Theme.mint.opacity(0.7), Theme.mint])
+                                                           : [Theme.mint.opacity(0.7), Theme.mint],
+                       label: "Preamp",
+                       valueText: { _ in String(format: "%+0.1f decibels", engine.amplificationDB) })
             Text(String(format: "%+0.1f dB", engine.amplificationDB))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -595,11 +602,50 @@ struct PreampRow: View {
             .buttonStyle(.plain)
             .disabled(engine.masterGain == 1)
             .help("Reset the preamp to 0 dB")
+            PeakLight()
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.ink.opacity(0.045)))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+    }
+}
+
+/// The clip light beside the preamp, and the limiter's switch. It lights for a
+/// couple of seconds whenever the output goes past full scale: amber "LIMIT"
+/// while the limiter is turning those peaks down, red "CLIP" when the limiter
+/// is off and they distort. Its own view, so the 20 Hz meter updates redraw
+/// this and not the preamp row.
+struct PeakLight: View {
+    @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var meters: MeterState
+
+    var body: some View {
+        let over = meters.overDB > 0
+        let limiting = engine.limiterEnabled
+        let tint = limiting ? Theme.amber : Theme.red
+        Button { engine.limiterEnabled.toggle() } label: {
+            Text(limiting ? "LIMIT" : "CLIP")
+                .font(.system(size: 8.5, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(over ? Theme.onSignal : (limiting ? Theme.mint.opacity(0.85) : Theme.ink.opacity(0.4)))
+                .frame(width: 38, height: 18)
+                .background(Capsule().fill(over ? tint : Theme.ink.opacity(0.06)))
+                .overlay(Capsule().strokeBorder(over ? tint : (limiting ? Theme.mint.opacity(0.35) : Theme.ink.opacity(0.12))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: over)
+        .help(help(over: over, limiting: limiting))
+        .accessibilityLabel("Limiter")
+        .accessibilityValue(limiting ? (over ? "On, limiting" : "On") : (over ? "Off, clipping" : "Off"))
+    }
+
+    private func help(over: Bool, limiting: Bool) -> String {
+        let amount = over ? String(format: " Peaks are %.1f dB over full scale.", meters.overDB) : ""
+        return limiting
+            ? "Limiter on: peaks over full scale are turned down instead of distorting. Lights while it is working.\(amount) Click to turn it off."
+            : "Limiter off: this lights when the output clips.\(amount) Click to turn the limiter on."
     }
 }
 

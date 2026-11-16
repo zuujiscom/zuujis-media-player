@@ -305,6 +305,38 @@ struct ZuujisMediaPlayerApp: App {
                     }
                 }
 
+                Menu("Loudness Matching") {
+                    Picker("Match Loudness", selection: Binding(get: { player.loudness.mode },
+                                                               set: { player.loudness.mode = $0 })) {
+                        Text("Off").tag(LoudnessMode.off)
+                        Text("By Track").tag(LoudnessMode.track)
+                        Text("By Album").tag(LoudnessMode.album)
+                    }
+                    .pickerStyle(.inline)
+                    Toggle("Keep Peaks Under Full Scale", isOn: Binding(
+                        get: { player.loudness.preventClipping }, set: { player.loudness.preventClipping = $0 }))
+                    Toggle("Measure Songs Without ReplayGain Tags", isOn: Binding(
+                        get: { player.loudness.measuresAutomatically }, set: { player.loudness.measuresAutomatically = $0 }))
+                    Divider()
+                    if player.loudness.isMeasuringBatch {
+                        Text(player.loudness.batchStatus ?? "Measuring loudness…")
+                        Button("Stop Measuring") { player.loudness.stopMeasuring() }
+                    } else {
+                        if let status = player.loudness.batchStatus { Text(status) }
+                        Button("Measure Loudness of This Album") {
+                            guard let track = player.track else { return }
+                            let songs = library.tracks.filter { $0.album == track.album && $0.artist == track.artist }
+                            player.loudness.measure(songs.map { ($0.url, $0.artist, $0.album) },
+                                                    label: track.album ?? "This album")
+                        }
+                        .disabled(player.track?.album == nil)
+                        Button("Measure Loudness of Whole Library") {
+                            player.loudness.measure(library.tracks.map { ($0.url, $0.artist, $0.album) }, label: "Library")
+                        }
+                        .disabled(library.tracks.isEmpty)
+                    }
+                }
+
                 Divider()
 
                 Button(player.track.map { playlists.isFavorite($0.url.path) } == true
@@ -370,6 +402,8 @@ struct ZuujisMediaPlayerApp: App {
                     audioEngine.resetToFlat()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Toggle("Limiter", isOn: $audioEngine.limiterEnabled)
 
                 Divider()
 
@@ -524,6 +558,7 @@ struct ZuujisMediaPlayerApp: App {
         Settings {
             SettingsView()
                 .environmentObject(player)
+                .environmentObject(player.loudness)
                 .environmentObject(audioEngine)
                 .environmentObject(presetManager)
                 .environmentObject(lyrics)
@@ -586,6 +621,7 @@ struct ZuujisMediaPlayerApp: App {
             library.saveNow()
             playlists.saveNow()
             player.queue.saveNow()
+            player.loudness.saveNow()
             player.saveResumePoint()
         }
         login.enableOnFirstRun()
@@ -666,11 +702,18 @@ struct ZuujisMediaPlayerApp: App {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
-        panel.message = "Choose .milk presets, or a folder of them."
+        panel.message = "Choose .milk presets, or a folder of them. Their motion is reproduced; custom waves, shapes, per-pixel warps and shaders are not drawn."
         panel.begin { response in
             guard response == .OK else { return }
             let urls = panel.urls
-            Task { @MainActor in milkdropLibrary.importPresets(from: urls) }
+            Task { @MainActor in
+                milkdropLibrary.importPresets(from: urls)
+                guard let summary = milkdropLibrary.lastImportSummary else { return }
+                let alert = NSAlert()
+                alert.messageText = "MilkDrop presets imported"
+                alert.informativeText = summary
+                alert.runModal()
+            }
         }
     }
 }

@@ -370,7 +370,10 @@ enum ID3Prefix {
             guard n >= 0, i + n <= data.count else { break }
             var frame = Array(data[i..<i + n])
             i += n
-            guard let name = names[id], !seen.contains(name) else { continue }
+            // User text frames are read for ReplayGain only (see `userText`).
+            let isUserText = id == "TXXX" || id == "TXX"
+            let name = names[id] ?? ""
+            guard isUserText || (!name.isEmpty && !seen.contains(name)) else { continue }
             if version == 3 {
                 if frameFlags & 0xC0 != 0 { continue }                // compressed / encrypted
                 if frameFlags & 0x20 != 0 { frame = Array(frame.dropFirst()) }   // group id
@@ -379,6 +382,12 @@ enum ID3Prefix {
                 if frameFlags & 0x40 != 0 { frame = Array(frame.dropFirst()) }   // group id
                 if frameFlags & 0x01 != 0 { frame = Array(frame.dropFirst(4)) }  // data length
                 if frameFlags & 0x02 != 0 || flags & 0x80 != 0 { frame = resync(frame) }
+            }
+            if isUserText {
+                guard let (key, value) = userText(frame), key.hasPrefix("REPLAYGAIN_"), !seen.contains(key) else { continue }
+                out.append("\(key)=\(value)")
+                seen.insert(key)
+                continue
             }
             guard frame.count > 1, let text = decode(frame), !text.isEmpty else { continue }
             // A bare "(17)" genre is an index into the old ID3v1 list, not a name.
@@ -417,6 +426,25 @@ enum ID3Prefix {
             i += 1
         }
         return plain
+    }
+
+    /// A `TXXX` frame: an encoding byte, a description, a terminator (two zero
+    /// bytes in UTF-16), then the value. Returns the description upper-cased.
+    private static func userText(_ frame: [UInt8]) -> (String, String)? {
+        guard let encoding = frame.first, frame.count > 2 else { return nil }
+        let body = Array(frame.dropFirst())
+        let wide = encoding == 1 || encoding == 2
+        var split: Int?
+        var i = 0
+        while i + (wide ? 1 : 0) < body.count {
+            if body[i] == 0, !wide || body[i + 1] == 0 { split = i; break }
+            i += wide ? 2 : 1
+        }
+        guard let split else { return nil }
+        guard let key = decode([encoding] + body[..<split]),
+              let value = decode([encoding] + body[(split + (wide ? 2 : 1))...]),
+              !key.isEmpty, !value.isEmpty else { return nil }
+        return (key.uppercased(), value)
     }
 
     private static func decode(_ frame: [UInt8]) -> String? {

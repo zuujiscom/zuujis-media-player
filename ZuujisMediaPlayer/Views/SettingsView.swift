@@ -185,7 +185,7 @@ private struct SwitchRow: View {
 
     var body: some View {
         SettingsRow(title: title, detail: detail) {
-            Toggle("", isOn: $isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
+            Toggle(title, isOn: $isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
         }
     }
 }
@@ -202,7 +202,8 @@ private struct SizeRow: View {
     var body: some View {
         SettingsRow(title: title, detail: detail, dimmed: dimmed) {
             HStack(spacing: 10) {
-                GlowSlider(value: $value, range: range, step: 10)
+                GlowSlider(value: $value, range: range, step: 10,
+                           label: title, valueText: { "\(Int($0)) points" })
                     .frame(width: 210)
                 Text("\(Int(value)) pt")
                     .font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
@@ -1212,6 +1213,8 @@ private struct NowPlayingWidgetMock: View {
 private struct GeneralSettingsPane: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var lyrics: LyricsStore
+    @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var loudness: LoudnessStore
     @AppStorage(OnlineCoverArt.defaultsKey) private var onlineArtwork = false
     @AppStorage(ArtworkWash.storageKey) private var artworkTint = false
     @EnvironmentObject private var login: LaunchAtLogin
@@ -1283,13 +1286,64 @@ private struct GeneralSettingsPane: View {
                                     set: { onlineArtwork = $0; if $0 { player.refreshArtwork() } }))
         }
 
+        SettingsGroup(title: "Loudness", symbol: "speaker.wave.2") {
+            SettingsRow(title: "Match the loudness of songs",
+                        detail: "Brings every file to the same level (-18 LUFS), so albums mastered loud and quiet do not jump. "
+                            + "Album keeps the quiet and loud songs of one album as they were mastered; Track levels every song.") {
+                SegmentedPills(options: [(LoudnessMode.off, "Off"), (.track, "Track"), (.album, "Album")],
+                               selection: $loudness.mode, height: 22, horizontalPadding: 12)
+            }
+            SwitchRow(title: "Measure songs that have no ReplayGain tags",
+                      detail: "Uses the tags a file already has. Without them, the playing album and the next song are measured in the background "
+                        + "and matched from their next start. Results are kept in Application Support; your files are not changed.",
+                      isOn: $loudness.measuresAutomatically)
+            SwitchRow(title: "Keep peaks under full scale",
+                      detail: "Raises a quiet song only as far as its loudest peak allows.",
+                      isOn: $loudness.preventClipping)
+            SettingsRow(title: "Songs not measured yet",
+                        detail: "The gain for a song with no tags, until it has been measured.",
+                        dimmed: loudness.mode == .off) {
+                HStack(spacing: 10) {
+                    GlowSlider(value: $loudness.fallbackDB, range: LoudnessStore.fallbackRange, step: 0.5,
+                               label: "Gain for songs not measured yet",
+                               valueText: { String(format: "%+.1f decibels", $0) })
+                        .frame(width: 210)
+                    Text(String(format: "%+.1f dB", loudness.fallbackDB))
+                        .font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(Theme.ink.opacity(0.75))
+                        .frame(width: 60, alignment: .trailing)
+                }
+            }
+            if let status = loudness.batchStatus {
+                Label(status, systemImage: "waveform")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink.opacity(0.6))
+            }
+            RowDivider()
+            SwitchRow(title: "Limiter",
+                      detail: "Turns down peaks that the preamp, a boosted band or a loudness gain would push past full scale, instead of letting them distort. "
+                        + "Applies to songs played here and to the system equalizer. The light beside the preamp shows when it is working.",
+                      isOn: $engine.limiterEnabled)
+        }
+
         SettingsGroup(title: "Output", symbol: "hifispeaker") {
             SwitchRow(title: "Match the output rate to each track",
-                      detail: "Sets the device to the file's own sample rate. Applies from the next track.",
+                      detail: "Sets the output device to each file's own sample rate, so it plays without resampling. "
+                        + "Other apps playing at the same time are resampled to that rate instead, and the device is set back when playback stops. "
+                        + "Applies from the next track.",
                       isOn: $player.matchSampleRate)
             SwitchRow(title: "Exclusive output",
-                      detail: "Other apps are silent while a song plays.",
+                      detail: "Takes the output device for this app alone while a song plays: other apps, alerts and calls on that device are silent until playback stops. "
+                        + "Combined with rate matching, nothing else can change the device's rate under it.",
                       isOn: $player.exclusiveMode)
+            if engine.isRunning, player.matchSampleRate || player.exclusiveMode {
+                Label("The system equalizer is on, so the output rate and exclusive access are left alone: its route is built for the device's current rate. "
+                      + "They apply again once the equalizer is off.",
+                      systemImage: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             SwitchRow(title: "Keep the pitch when changing speed",
                       detail: "Off, speed changes pitch like a turntable.",
                       isOn: $player.keepsPitch)

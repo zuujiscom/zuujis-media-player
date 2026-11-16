@@ -14,7 +14,7 @@ import Combine
 /// purpose, so the player's output reaches the speakers directly and the
 /// player has to apply the EQ itself. The graph is
 ///
-///     AVAudioPlayerNode → AVAudioUnitEQ → mainMixer → default output
+///     AVAudioPlayerNode → AVAudioUnitEQ → limiter → mainMixer → default output
 ///
 /// `AudioEngine` stays the source of truth for the bands, bypass and master
 /// gain; this class only mirrors them onto its own `AVAudioUnitEQ`.
@@ -180,6 +180,16 @@ final class PlayerEngine: ObservableObject {
 
     let queue: PlaybackQueue
 
+    /// Loudness matching: each song's gain from its ReplayGain tags or this
+    /// app's own measurement. Its changes are passed on as this object's, so
+    /// any view that observes the player can show its settings.
+    let loudness: LoudnessStore
+
+    /// The loudness gain of the song that is playing, in dB. It rides on the
+    /// EQ's global gain with the preamp (see `applyEQ`), because the player
+    /// node's volume stops at 1 and is also the sleep timer's fade.
+    private var loudnessGainDB = 0.0
+
     /// Fires when the timeline jumps — a seek, a new track, play or pause — so
     /// Now Playing can resync its elapsed time.
     let timelineChanged = PassthroughSubject<Void, Never>()
@@ -195,6 +205,9 @@ final class PlayerEngine: ObservableObject {
     // bypassed at 1× so normal playback is untouched.
     private var timePitch = AVAudioUnitTimePitch()
     private var varispeed = AVAudioUnitVarispeed()
+    /// After the EQ, so it catches whatever the preamp, the bands and the
+    /// loudness gain add up to. Bypassed when the user turns the limiter off.
+    private var limiter: AVAudioUnitEffect?
 
     /// What the graph was built for. A track with a different sample rate or
     /// channel count needs a rebuild; one with the same plays gaplessly.
@@ -279,6 +292,9 @@ final class PlayerEngine: ObservableObject {
         var fileStart: AVAudioFramePosition
         var startSample: AVAudioFramePosition
         var frames: AVAudioFramePosition
+        /// Loudness gain in dB, fixed when the segment is made: a measurement
+        /// that arrives mid-song must not move the volume.
+        var gainDB = 0.0
     }
 
     /// The playing segment first, then at most one scheduled after it.
@@ -307,8 +323,9 @@ final class PlayerEngine: ObservableObject {
     private let analyzer = SpectrumAnalyzer()
     private let latest = LatestFrame()
 
-    init(queue: PlaybackQueue? = nil) {
+    init(queue: PlaybackQueue? = nil, loudness: LoudnessStore? = nil) {
         self.queue = queue ?? PlaybackQueue()
+        self.loudness = loudness ?? LoudnessStore()
         let stored = UserDefaults.standard.object(forKey: Self.volumeKey) as? Float
         _volume = Published(initialValue: min(1, max(0, stored ?? 1)))
     }
@@ -332,6 +349,25 @@ final class PlayerEngine: ObservableObject {
             MainActor.assumeIsolated { self?.applyEQ() }
         }
         .store(in: &cancellables)
+
+        equalizer.$limiterEnabled
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                MainActor.assumeIsolated { self?.limiter?.bypass = !enabled }
+            }
+            .store(in: &cancellables)
+
+        // A loudness setting changed: the songs already scheduled take their
+        // new gain now, since this is the user asking to hear the difference.
+        loudness.settingsChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                MainActor.assumeIsolated { self?.refreshLoudnessGains() }
+            }
+            .store(in: &cancellables)
+        loudness.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         // The system route needs the device too: let go of an exclusive hold
         // the moment it starts, or its aggregate device could not use it.
@@ -535,7 +571,8 @@ final class PlayerEngine: ObservableObject {
     /// so a line lights when it is heard, not when it is rendered.
     var outputLatency: Double {
         guard state == .playing, engine.isRunning else { return 0 }
-        let latency = engine.outputNode.presentationLatency
+        // The limiter's look-ahead delays what is heard a little further.
+        let latency = engine.outputNode.presentationLatency + (limiter?.bypass == false ? SoftLimiter.lookaheadSeconds : 0)
         return latency.isFinite ? min(max(0, latency), 1.5) : 0
     }
 
@@ -607,8 +644,33 @@ final class PlayerEngine: ObservableObject {
             info: Self.makeInfo(for: file, item: item),
             fileStart: fileStart,
             startSample: startSample,
-            frames: file.length - fileStart
+            frames: file.length - fileStart,
+            gainDB: loudness.gain(for: item.url, artist: item.artist, album: item.album)
         )
+    }
+
+    /// Re-reads the gain of what is scheduled and applies the playing song's.
+    private func refreshLoudnessGains() {
+        for i in segments.indices {
+            let info = segments[i].info
+            segments[i].gainDB = loudness.gain(for: info.url, artist: info.artist, album: info.album)
+        }
+        if let first = segments.first { loudnessGainDB = first.gainDB }
+        applyGlobalGain()
+        measureUpcoming()
+    }
+
+    /// Asks for the playing song, the next one and the rest of the playing
+    /// album to be measured if they carry no ReplayGain tags, so they are
+    /// matched from their next start.
+    private func measureUpcoming() {
+        guard loudness.mode != .off, loudness.measuresAutomatically, let current = queue.current else { return }
+        var songs = [current]
+        if let next = queue.itemAfterCurrent() { songs.append(next) }
+        if current.album != nil {
+            songs += queue.items.filter { $0.album == current.album && $0.artist == current.artist }.prefix(60)
+        }
+        loudness.measureAhead(songs.map { ($0.url, $0.artist, $0.album) })
     }
 
     /// Restarts `segment`'s file from `frame` — a seek, or a re-schedule after
@@ -654,7 +716,10 @@ final class PlayerEngine: ObservableObject {
         schedule(first, token: token)
         segments = [first]
         pausedFrame = first.fileStart
+        loudnessGainDB = first.gainDB
+        applyGlobalGain()
         scheduleNext(token: token)
+        measureUpcoming()
 
         if playing {
             player.play()
@@ -714,8 +779,15 @@ final class PlayerEngine: ObservableObject {
             // The join already happened in the audio; catch the bookkeeping up.
             queue.setCurrent(playing.itemID)
             track = playing.info
+            // The join is the moment the gain changes. In album mode both
+            // songs of one album share a gain, so nothing is heard there.
+            if loudnessGainDB != playing.gainDB {
+                loudnessGainDB = playing.gainDB
+                applyGlobalGain()
+            }
             loadMetadata(for: playing.info.url)
             scheduleNext(token: token)
+            measureUpcoming()
             timelineChanged.send()
         } else if sleepTimer == .endOfTrack {
             // Stop here, with the next song in the bar ready for Play.
@@ -805,7 +877,11 @@ final class PlayerEngine: ObservableObject {
         newEngine.connect(newPlayer, to: newVarispeed, format: format)
         newEngine.connect(newVarispeed, to: newTimePitch, format: format)
         newEngine.connect(newTimePitch, to: newEQ, format: format)
-        newEngine.connect(newEQ, to: newEngine.mainMixerNode, format: format)
+        let newLimiter = LimiterUnit.makeNode()
+        newLimiter.bypass = equalizer?.limiterEnabled == false
+        newEngine.attach(newLimiter)
+        newEngine.connect(newEQ, to: newLimiter, format: format)
+        newEngine.connect(newLimiter, to: newEngine.mainMixerNode, format: format)
         #if DEBUG
         // Screenshot runs play a real file for the meters; this keeps them
         // silent. The meter tap sits before the mixer, so it still reads.
@@ -820,6 +896,7 @@ final class PlayerEngine: ObservableObject {
         eqNode = newEQ
         timePitch = newTimePitch
         varispeed = newVarispeed
+        limiter = newLimiter
         graphFormat = format
         applySpeed()
         applyEQ()
@@ -898,11 +975,15 @@ final class PlayerEngine: ObservableObject {
             f.bandwidth = Float(band.bandwidth)
             f.bypass = !band.isEnabled || equalizer.isBypassed || !equalizer.isRunning
         }
-        // The power button is the EQ's master switch: with the engine off the
-        // player plays flat, gain included.
-        eqNode.globalGain = equalizer.isRunning
-            ? Float(min(24, max(-96, equalizer.amplificationDB)))
-            : 0
+        applyGlobalGain()
+    }
+
+    /// The power button is the EQ's master switch: with the engine off the
+    /// player plays flat, preamp included. The loudness gain is not part of
+    /// the EQ and applies either way.
+    private func applyGlobalGain() {
+        let preamp = equalizer?.isRunning == true ? (equalizer?.amplificationDB ?? 0) : 0
+        eqNode.globalGain = Float(min(24, max(-96, preamp + loudnessGainDB)))
     }
 
     // MARK: - Metering
@@ -918,6 +999,16 @@ final class PlayerEngine: ObservableObject {
             guard let channel = buffer.floatChannelData?[0] else { return }
             let total = Int(buffer.frameLength)
             guard total > 0 else { return }
+
+            // The tap is ahead of the limiter, so a peak over 1.0 here is one
+            // that would clip without it.
+            var peak: Float = 0
+            if let channels = buffer.floatChannelData {
+                for c in 0..<Int(buffer.format.channelCount) {
+                    let samples = channels[c]
+                    for i in 0..<total where abs(samples[i]) > peak { peak = abs(samples[i]) }
+                }
+            }
 
             let waveformCount = 256
             var waveform = [Float](repeating: 0, count: waveformCount)
@@ -950,7 +1041,8 @@ final class PlayerEngine: ObservableObject {
             let snapshot = MeterSnapshot(
                 spectrum: spectrum,
                 level: min(1, analyzer.rms(buffer: buffer) * 3),
-                latencyMs: 0
+                latencyMs: 0,
+                peak: peak
             )
             DispatchQueue.main.async {
                 meters?.publishPlayer(snapshot)
