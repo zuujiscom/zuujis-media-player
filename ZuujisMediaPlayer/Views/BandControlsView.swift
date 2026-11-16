@@ -541,7 +541,13 @@ struct PreampRow: View {
             .buttonStyle(.plain)
             .disabled(engine.masterGain == 1)
             .help("Reset the preamp to 0 dB")
-            PeakLight(clip: engine.meters.clip)
+            // Shown only while the limiter is on. With it off the light would
+            // read CLIP in red for most of a loud song, which is exactly what
+            // someone who has turned the limiter off does not want to look at.
+            // Equalizer ▸ Limiter (and Settings) turn it back on.
+            if engine.limiterEnabled {
+                PeakLight(clip: engine.meters.clip)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
@@ -550,11 +556,12 @@ struct PreampRow: View {
     }
 }
 
-/// The clip light beside the preamp, and the limiter's switch. It lights for a
-/// couple of seconds whenever the output goes past full scale: amber "LIMIT"
-/// while the limiter is turning those peaks down, red "CLIP" when the limiter
-/// is off and they distort. Its own view, so the 20 Hz meter updates redraw
-/// this and not the preamp row.
+/// The limiter's light beside the preamp, and its off switch. It lights amber
+/// for a couple of seconds whenever the output goes past full scale and the
+/// limiter turns those peaks down. The preamp row only shows it while the
+/// limiter is on, so the red "CLIP" state below is not normally seen; it is
+/// kept for any place that shows the light regardless. Its own view, so the
+/// 20 Hz meter updates redraw this and not the preamp row.
 struct PeakLight: View {
     @EnvironmentObject private var engine: AudioEngine
     /// Only the over-level reading, never the whole `MeterState`: see `MeterState.clip`.
@@ -585,7 +592,7 @@ struct PeakLight: View {
     private func help(over: Bool, limiting: Bool) -> String {
         let amount = over ? String(format: " Peaks are %.1f dB over full scale.", clip.overDB) : ""
         return limiting
-            ? "Limiter on: peaks over full scale are turned down instead of distorting. Lights while it is working.\(amount) Click to turn it off."
+            ? "Limiter on: peaks over full scale are turned down instead of distorting. Lights while it is working.\(amount) Click to turn it off and hide this; Equalizer ▸ Limiter turns it back on."
             : "Limiter off: this lights when the output clips.\(amount) Click to turn the limiter on."
     }
 }
