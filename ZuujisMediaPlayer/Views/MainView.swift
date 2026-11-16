@@ -233,7 +233,6 @@ struct AllPanelsHidden: View {
 /// window narrows.
 struct HeaderBar: View {
     @EnvironmentObject private var engine: AudioEngine
-    @EnvironmentObject private var meters: MeterState
     @ObservedObject private var dataIssues = DataIssues.shared
     @EnvironmentObject private var presets: PresetManager
     @Environment(\.openWindow) private var openWindow

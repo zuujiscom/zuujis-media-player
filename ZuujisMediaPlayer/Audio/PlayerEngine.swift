@@ -576,6 +576,17 @@ final class PlayerEngine: ObservableObject {
         return latency.isFinite ? min(max(0, latency), 1.5) : 0
     }
 
+    /// `outputBufferMs()` read at most once a second: it is three calls into
+    /// the audio server, and the meter tap asks on every buffer.
+    private var bufferMsCache: (value: Double, read: Date) = (0, .distantPast)
+    private func cachedOutputBufferMs() -> Double {
+        let now = Date()
+        if now.timeIntervalSince(bufferMsCache.read) >= 1 {
+            bufferMsCache = (Self.outputBufferMs(), now)
+        }
+        return bufferMsCache.value
+    }
+
     /// The default output's IO buffer in milliseconds — the same figure the
     /// system route reports (512 frames at 48 kHz is 10.7 ms), read from the
     /// device so it exists with the route off or its input silent.
@@ -1045,12 +1056,17 @@ final class PlayerEngine: ObservableObject {
                 peak: peak
             )
             DispatchQueue.main.async {
-                meters?.publishPlayer(snapshot)
-                // The header's "ms" is the system route's while it runs; with the
-                // route off it shows the player's own output delay instead.
                 MainActor.assumeIsolated {
-                    guard let self, self.equalizer?.isRunning != true else { return }
-                    meters?.setLatency(Self.outputBufferMs())
+                    // Paused, the engine keeps running and this tap keeps
+                    // delivering silence. Publishing it would mark the player
+                    // live again (undoing `clearMeters`) and redraw every
+                    // meter view about 23 times a second for nothing.
+                    guard let self, self.state == .playing else { return }
+                    meters?.publishPlayer(snapshot)
+                    // The header's "ms" is the system route's while it runs; with the
+                    // route off it shows the player's own output delay instead.
+                    guard self.equalizer?.isRunning != true else { return }
+                    meters?.setLatency(self.cachedOutputBufferMs())
                 }
             }
         }

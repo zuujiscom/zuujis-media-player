@@ -468,9 +468,16 @@ struct Scrubber: View {
     @EnvironmentObject private var player: PlayerEngine
     @State private var scrubbing = false
     @State private var scrubValue = 0.0
+    /// Bumped on a seek, track change, play or pause, so the position is
+    /// redrawn while the timeline below is paused.
+    @State private var jumps = 0
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+        // Ticks only while playing. A periodic timeline that never stops kept
+        // the whole window re-laying itself out: about 30% CPU with nothing
+        // playing. Stopped or paused, the position moves only by a jump.
+        let _ = jumps
+        TimelineView(.animation(minimumInterval: 0.1, paused: player.state != .playing)) { _ in
             let duration = max(player.track?.duration ?? 0, 0.001)
             let position = scrubbing ? scrubValue : min(player.currentTime(), duration)
 
@@ -501,6 +508,7 @@ struct Scrubber: View {
             .font(.system(size: 11, weight: .medium).monospacedDigit())
             .foregroundStyle(Theme.ink.opacity(0.6))
         }
+        .onReceive(player.timelineChanged) { jumps &+= 1 }
     }
 
     private static func format(_ seconds: Double) -> String {
