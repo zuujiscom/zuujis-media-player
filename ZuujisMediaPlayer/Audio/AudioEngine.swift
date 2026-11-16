@@ -956,11 +956,22 @@ final class AudioEngine: NSObject, ObservableObject {
         return latencyShown
     }
 
+    /// `PlayerEngine.outputBufferMs()` at most once a second: it is three
+    /// calls into the audio server, and silent system audio asked 20 times a second.
+    private var bufferMsCache: (value: Double, read: Date) = (0, .distantPast)
+    private func cachedOutputBufferMs() -> Double {
+        let now = Date()
+        if now.timeIntervalSince(bufferMsCache.read) >= 1 {
+            bufferMsCache = (PlayerEngine.outputBufferMs(), now)
+        }
+        return bufferMsCache.value
+    }
+
     private func updateMeters() {
         // No frames while the system audio is silent (this app's own output is
         // not captured), but the chip should still read the buffer length.
         guard let buffer = renderer.copyLatestFrames() else {
-            meters.setLatency(steadyLatency(renderer.latencyMs > 0 ? renderer.latencyMs : PlayerEngine.outputBufferMs()))
+            meters.setLatency(steadyLatency(renderer.latencyMs > 0 ? renderer.latencyMs : cachedOutputBufferMs()))
             return
         }
         meters.publishRoute(MeterSnapshot(
@@ -1248,7 +1259,10 @@ final class AudioEngine: NSObject, ObservableObject {
             "Tap input:     \(inputFormat)",
             "Master gain:   \(String(format: "%.2fx (%+.1f dB)", masterGain, amplificationDB))",
             "Bands:         \(bands.count)",
-            "Device profile: \(currentDeviceHasProfile ? "saved" : "none")\(deviceProfiles?.isEnabled == false ? " (profiles off)" : "")"
+            "Device profile: \(currentDeviceHasProfile ? "saved" : "none")\(deviceProfiles?.isEnabled == false ? " (profiles off)" : "")",
+            "Limiter:       \(limiterEnabled ? "on" : "off")",
+            // What the LIMIT / CLIP light shows: held two seconds after a peak.
+            "Peaks:         \(meters.overDB > 0 ? String(format: "%+.1f dB over full scale (%@)", meters.overDB, limiterEnabled ? "limited" : "clipping") : "under full scale")"
         ]
         if let routeErrorMessage {
             lines.append("Route error:   \(routeErrorMessage)")
@@ -1326,6 +1340,18 @@ struct MeterSnapshot {
 /// graph and the latency chip flickered between two different readings. The
 /// player now takes over while it is producing frames, and the route's latency
 /// is kept apart so the chip never drops to 0.
+/// How far past full scale the output went, for the clip light. See `MeterState.clip`.
+@MainActor
+final class ClipLevel: ObservableObject {
+    @Published private(set) var overDB: Double = 0
+    /// Rounded to a tenth of a dB, so a run of peaks at nearly the same level
+    /// does not redraw the light for each one.
+    func set(_ db: Double) {
+        let rounded = (db * 10).rounded() / 10
+        if rounded != overDB { overDB = rounded }
+    }
+}
+
 @MainActor
 final class MeterState: ObservableObject {
     @Published var snapshot = MeterSnapshot()
@@ -1338,7 +1364,11 @@ final class MeterState: ObservableObject {
 
     /// How far past full scale the output went, in dB, held for a couple of
     /// seconds so a single peak can be seen. Zero when nothing went over.
-    @Published private(set) var overDB: Double = 0
+    var overDB: Double { clip.overDB }
+    /// The over-level reading on its own object: it changes a few times a
+    /// song, and the clip light watching `MeterState` itself redrew (and
+    /// re-laid out the main window) on every meter reading.
+    let clip = ClipLevel()
     private var overUntil = Date.distantPast
     private static let overHold: TimeInterval = 2
 
@@ -1346,10 +1376,16 @@ final class MeterState: ObservableObject {
         let now = Date()
         if peak > 1 {
             let db = Double(20 * log10(peak))
-            if db >= overDB || now >= overUntil { overDB = db }
-            overUntil = now.addingTimeInterval(Self.overHold)
+            // A new high, or the old one's hold has run out: show this peak
+            // and hold it. A lower peak during the hold must not extend it,
+            // or the light kept the loudest reading for as long as anything
+            // at all went over.
+            if db >= overDB || now >= overUntil {
+                clip.set(db)
+                overUntil = now.addingTimeInterval(Self.overHold)
+            }
         } else if overDB != 0, now >= overUntil {
-            overDB = 0
+            clip.set(0)
         }
     }
 
@@ -1383,7 +1419,7 @@ final class MeterState: ObservableObject {
     func clearRoute() {
         guard !playerOwnsMeters else { return }
         snapshot = MeterSnapshot()
-        overDB = 0
+        clip.set(0)
     }
 
     /// The player stopped or paused. The route takes the meters back on its
@@ -1393,7 +1429,7 @@ final class MeterState: ObservableObject {
         playerActiveUntil = .distantPast
         if !routeRunning {
             snapshot = MeterSnapshot(latencyMs: snapshot.latencyMs)
-            overDB = 0
+            clip.set(0)
         }
     }
 }

@@ -117,10 +117,12 @@ struct BandControlsView: View {
             }
 
             let withLevels = row.background(alignment: .topLeading) {
-                BandLevelBackdrop(
-                    frequencies: engine.bands.map(\.frequency),
-                    column: column, spacing: Self.columnSpacing, trackLength: track
-                )
+                LiveLayer {
+                    BandLevelBackdrop(
+                        frequencies: engine.bands.map(\.frequency),
+                        column: column, spacing: Self.columnSpacing, trackLength: track
+                    )
+                }
             }
             if fits {
                 withLevels.frame(width: geo.size.width, alignment: .center)
@@ -602,7 +604,7 @@ struct PreampRow: View {
             .buttonStyle(.plain)
             .disabled(engine.masterGain == 1)
             .help("Reset the preamp to 0 dB")
-            PeakLight()
+            PeakLight(clip: engine.meters.clip)
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
@@ -618,10 +620,11 @@ struct PreampRow: View {
 /// this and not the preamp row.
 struct PeakLight: View {
     @EnvironmentObject private var engine: AudioEngine
-    @EnvironmentObject private var meters: MeterState
+    /// Only the over-level reading, never the whole `MeterState`: see `MeterState.clip`.
+    @ObservedObject var clip: ClipLevel
 
     var body: some View {
-        let over = meters.overDB > 0
+        let over = clip.overDB > 0
         let limiting = engine.limiterEnabled
         let tint = limiting ? Theme.amber : Theme.red
         Button { engine.limiterEnabled.toggle() } label: {
@@ -642,7 +645,7 @@ struct PeakLight: View {
     }
 
     private func help(over: Bool, limiting: Bool) -> String {
-        let amount = over ? String(format: " Peaks are %.1f dB over full scale.", meters.overDB) : ""
+        let amount = over ? String(format: " Peaks are %.1f dB over full scale.", clip.overDB) : ""
         return limiting
             ? "Limiter on: peaks over full scale are turned down instead of distorting. Lights while it is working.\(amount) Click to turn it off."
             : "Limiter off: this lights when the output clips.\(amount) Click to turn the limiter on."

@@ -106,3 +106,70 @@ struct VisualizerToggle: View {
     }
 }
 
+
+// MARK: - Live layer
+
+/// Hosts a meter display (a `TimelineView` + `Canvas` that redraws 30 times a
+/// second) in its own `NSHostingView`. Inside the main window's hosting view,
+/// every frame of such a view made SwiftUI lay out the whole window, so the
+/// window's cost grew with every panel shown (about 20% CPU for the faders'
+/// backdrop alone). Here its frames update only this small view.
+///
+/// A display-only layer passes every click through to the controls drawn
+/// underneath; an `interactive` one (the scrubber) takes clicks and reports
+/// the height its content needs. Environment objects do not cross into a separate
+/// hosting view, so the ones the meter views read are passed in here. The
+/// wrapper does not observe `MeterState`, or its own update would run on
+/// every meter reading and defeat the point.
+struct LiveLayer<Content: View>: NSViewRepresentable {
+    @EnvironmentObject private var engine: AudioEngine
+    @EnvironmentObject private var player: PlayerEngine
+    var interactive = false
+    let content: Content
+
+    init(interactive: Bool = false, @ViewBuilder content: () -> Content) {
+        self.interactive = interactive
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> LiveHostingView<AnyView> {
+        let host = LiveHostingView(rootView: root)
+        host.passesClicks = !interactive
+        host.sizingOptions = []
+        return host
+    }
+
+    func updateNSView(_ host: LiveHostingView<AnyView>, context: Context) {
+        host.rootView = root
+    }
+
+    /// Display layers fill what they are offered; an interactive one takes
+    /// the offered width and its content's own height.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView host: LiveHostingView<AnyView>, context: Context) -> CGSize? {
+        guard interactive else { return nil }
+        // Measured once: `fittingSize` lays the content out, and doing that on
+        // every pass tied the main window's layout to this layer again.
+        if host.fittedHeight == nil { host.fittedHeight = host.fittingSize.height }
+        return CGSize(width: proposal.width ?? 300, height: host.fittedHeight ?? 20)
+    }
+
+    private var root: AnyView {
+        AnyView(content
+            .environmentObject(engine)
+            .environmentObject(engine.meters)
+            .environmentObject(player)
+            // The theme is read from `Theme.palette`, but the colour scheme
+            // is environment and does not cross over by itself.
+            .preferredColorScheme(Theme.scheme))
+    }
+}
+
+/// The host of a `LiveLayer`; a display layer never takes a click.
+final class LiveHostingView<Content: View>: NSHostingView<Content> {
+    var passesClicks = true
+    /// An interactive layer's height, measured the first time it is asked.
+    var fittedHeight: CGFloat?
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        passesClicks ? nil : super.hitTest(point)
+    }
+}

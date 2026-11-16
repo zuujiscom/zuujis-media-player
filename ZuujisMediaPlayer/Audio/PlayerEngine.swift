@@ -571,10 +571,18 @@ final class PlayerEngine: ObservableObject {
     /// so a line lights when it is heard, not when it is rendered.
     var outputLatency: Double {
         guard state == .playing, engine.isRunning else { return 0 }
+        // `presentationLatency` asks the audio server each time and lyrics read
+        // this every 50 ms: it was a quarter of the main thread while playing.
+        // It only changes with the device, so once a second is plenty.
+        let now = Date()
+        if now.timeIntervalSince(presentationLatencyCache.read) >= 1 {
+            presentationLatencyCache = (engine.outputNode.presentationLatency, now)
+        }
         // The limiter's look-ahead delays what is heard a little further.
-        let latency = engine.outputNode.presentationLatency + (limiter?.bypass == false ? SoftLimiter.lookaheadSeconds : 0)
+        let latency = presentationLatencyCache.value + (limiter?.bypass == false ? SoftLimiter.lookaheadSeconds : 0)
         return latency.isFinite ? min(max(0, latency), 1.5) : 0
     }
+    private var presentationLatencyCache: (value: Double, read: Date) = (0, .distantPast)
 
     /// `outputBufferMs()` read at most once a second: it is three calls into
     /// the audio server, and the meter tap asks on every buffer.
@@ -658,6 +666,15 @@ final class PlayerEngine: ObservableObject {
             frames: file.length - fileStart,
             gainDB: loudness.gain(for: item.url, artist: item.artist, album: item.album)
         )
+    }
+
+    /// The player's part of Copy Diagnostics: what is playing, the loudness
+    /// gain it plays at and whether the player's limiter node is in.
+    func diagnosticsReport() -> String {
+        var lines = ["Player:        \(state)" + (track.map { " — \($0.title)" } ?? "")]
+        lines.append("Loudness:      \(loudness.mode)" + (loudness.mode == .off ? "" : String(format: ", this song %+.1f dB", loudnessGainDB)))
+        if let limiter { lines.append("Player limiter: \(limiter.bypass ? "bypassed" : "in")") }
+        return lines.joined(separator: "\n")
     }
 
     /// Re-reads the gain of what is scheduled and applies the playing song's.
@@ -909,6 +926,7 @@ final class PlayerEngine: ObservableObject {
         varispeed = newVarispeed
         limiter = newLimiter
         graphFormat = format
+        presentationLatencyCache.read = .distantPast
         applySpeed()
         applyEQ()
         installMeterTap()

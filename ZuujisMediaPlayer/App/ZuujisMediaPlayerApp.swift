@@ -461,7 +461,7 @@ struct ZuujisMediaPlayerApp: App {
                 .keyboardShortcut("r", modifiers: [.command])
 
                 Button("Copy Diagnostics") {
-                    let text = audioEngine.diagnosticsReport()
+                    let text = audioEngine.diagnosticsReport() + "\n\n" + player.diagnosticsReport()
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(text, forType: .string)
                 }

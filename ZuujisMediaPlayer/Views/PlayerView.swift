@@ -36,7 +36,7 @@ struct PlayerBar: View {
         .background(alignment: .bottom) {
             // Only where the bar is one row; stacked, the bars would cross the controls.
             if width >= 900, showsSpectrum {
-                StageSpectrum()
+                LiveLayer { StageSpectrum() }
                     .frame(height: 96)
                     .allowsHitTesting(false)
             }
@@ -65,7 +65,7 @@ struct PlayerBar: View {
 
             VStack(spacing: 8) {
                 transport
-                Scrubber()
+                LiveLayer(interactive: true) { Scrubber() }
             }
             .frame(maxWidth: .infinity)
 
@@ -94,7 +94,7 @@ struct PlayerBar: View {
                 .frame(width: 330, alignment: .leading)
                 VStack(spacing: 8) {
                     transport
-                    Scrubber()
+                    LiveLayer(interactive: true) { Scrubber() }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -117,7 +117,7 @@ struct PlayerBar: View {
                 nowPlaying
                 Spacer(minLength: 0)
             }
-            Scrubber()
+            LiveLayer(interactive: true) { Scrubber() }
             transport
             HStack(spacing: 10) {
                 SpeedPill()
