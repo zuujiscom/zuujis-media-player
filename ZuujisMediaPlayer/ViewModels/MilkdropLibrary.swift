@@ -42,6 +42,7 @@ final class MilkdropLibrary: ObservableObject {
     func importPresets(from sources: [URL]) {
         var copied = 0
         var skipped = 0
+        var partial: [MilkdropCompatibility.Feature: Int] = [:]
 
         func consider(_ url: URL) {
             var isDirectory: ObjCBool = false
@@ -61,6 +62,9 @@ final class MilkdropLibrary: ObservableObject {
             do {
                 try FileManager.default.copyItem(at: url, to: destination)
                 copied += 1
+                if let text = try? String(contentsOf: url, encoding: .utf8) ?? String(contentsOf: url, encoding: .isoLatin1) {
+                    for feature in MilkdropCompatibility.unsupported(in: text) { partial[feature, default: 0] += 1 }
+                }
             } catch {
                 skipped += 1
             }
@@ -68,10 +72,10 @@ final class MilkdropLibrary: ObservableObject {
 
         sources.forEach(consider)
         reload()
-        lastImportSummary = skipped > 0
-            ? "Imported \(copied), skipped \(skipped)"
-            : "Imported \(copied)"
+        lastImportSummary = MilkdropCompatibility.summary(copied: copied, skipped: skipped, partial: partial)
     }
+
+    func clearImportSummary() { lastImportSummary = nil }
 
     func removeAll() {
         for url in (try? FileManager.default.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil)) ?? []
@@ -79,5 +83,42 @@ final class MilkdropLibrary: ObservableObject {
             try? FileManager.default.removeItem(at: url)
         }
         reload()
+    }
+}
+
+/// What an imported preset uses that this visualizer does not draw. Only the
+/// motion (per-frame equations and header values) is reproduced; see
+/// `MilkdropPreset`.
+enum MilkdropCompatibility {
+    enum Feature: String, CaseIterable, Hashable {
+        case waves = "custom waves"
+        case shapes = "custom shapes"
+        case perPixel = "per-pixel warp"
+        case shaders = "MilkDrop 2 shaders"
+    }
+
+    static func unsupported(in text: String) -> Set<Feature> {
+        var found = Set<Feature>()
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line.split(separator: "=", maxSplits: 1).last.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+            if line.hasPrefix("wavecode_"), line.contains("_enabled="), value != "0" { found.insert(.waves) }
+            else if line.hasPrefix("shapecode_"), line.contains("_enabled="), value != "0" { found.insert(.shapes) }
+            else if line.hasPrefix("per_pixel_") { found.insert(.perPixel) }
+            else if line.hasPrefix("warp_1=") || line.hasPrefix("comp_1=") { found.insert(.shaders) }
+        }
+        return found
+    }
+
+    static func summary(copied: Int, skipped: Int, partial: [Feature: Int]) -> String {
+        var lines = ["Imported \(copied) preset\(copied == 1 ? "" : "s")."]
+        if skipped > 0 {
+            lines.append("\(skipped) skipped: no motion equations, or the file could not be copied.")
+        }
+        let parts = Feature.allCases.compactMap { f in partial[f].map { "\(f.rawValue) (\($0))" } }
+        if !parts.isEmpty {
+            lines.append("Presets play their motion only. Not drawn: " + parts.joined(separator: ", ") + ", so these look simpler than in MilkDrop.")
+        }
+        return lines.joined(separator: "\n\n")
     }
 }

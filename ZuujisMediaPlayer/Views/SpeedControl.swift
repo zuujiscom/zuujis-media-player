@@ -73,7 +73,8 @@ struct SpeedPanel: View {
             HStack(spacing: 8) {
                 Text("0.5×").font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.ink.opacity(0.45))
                 GlowSlider(value: Binding(get: { player.speed }, set: { player.speed = $0 }),
-                           range: PlayerEngine.speedRange, step: 0.05)
+                           range: PlayerEngine.speedRange, step: 0.05,
+                           label: "Playback speed", valueText: { String(format: "%.2f times", $0) })
                 Text("2×").font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.ink.opacity(0.45))
             }
 

@@ -88,6 +88,7 @@ struct MenuBarPlayer: View {
                         .overlay(Circle().strokeBorder(Theme.ink.opacity(0.10)))
                 }
                 .menuStyle(.button)
+                .accessibilityLabel("More")
                 .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()

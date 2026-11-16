@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 /// the cover can tint the window's backdrop (`ArtworkWash`, off by default).
 struct PlayerBar: View {
     @EnvironmentObject private var player: PlayerEngine
+    @EnvironmentObject private var engine: AudioEngine
 
     @EnvironmentObject private var queue: PlaybackQueue
     @EnvironmentObject private var playlists: PlaylistStore
@@ -154,6 +155,8 @@ struct PlayerBar: View {
                     }
                     .buttonStyle(.plain)
                     .help(on ? "Remove from Favorites  (⌘D)" : "Add to Favorites  (⌘D)")
+                    .accessibilityLabel("Favorite")
+                    .accessibilityValue(on ? "On" : "Off")
                 }
 
                 Text([track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — "))
@@ -297,21 +300,30 @@ struct PlayerBar: View {
 
     // MARK: Output and volume
 
+    /// Both output options are paused while the system EQ holds the device.
+    private var eqNote: String {
+        engine.isRunning ? "\n\nPaused while the system equalizer is on: its route is built for the device's current rate." : ""
+    }
+
     private var outputButtons: some View {
         HStack(spacing: 6) {
             IconButton(symbol: player.exclusiveMode ? "lock.fill" : "lock.open", active: player.exclusiveMode) {
                 player.exclusiveMode.toggle()
             }
             .help(player.exclusiveMode
-                  ? "Exclusive output on: other apps are silent while this plays"
+                  ? "Exclusive output on: other apps are silent while this plays" + eqNote
                   : "Exclusive output off: other apps can play at the same time")
+            .accessibilityLabel("Exclusive output")
+            .accessibilityValue(player.exclusiveMode ? "On" : "Off")
 
             IconButton(symbol: "waveform.badge.magnifyingglass", active: player.matchSampleRate) {
                 player.matchSampleRate.toggle()
             }
             .help(player.matchSampleRate
-                  ? "Output rate follows each track (on, applies from the next track or rebuild)"
+                  ? "Output rate follows each track (on, applies from the next track)" + eqNote
                   : "Output rate left as the device has it (off)")
+            .accessibilityLabel("Match output rate")
+            .accessibilityValue(player.matchSampleRate ? "On" : "Off")
 
             IconButton(symbol: "music.note.list") {
                 openWindow(id: ZuujisMediaPlayerApp.playlistWindowID)
@@ -338,8 +350,10 @@ struct PlayerBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(player.volume < 0.01 ? "Unmute" : "Mute")
             GlowSlider(value: Binding(get: { Double(player.volume) },
-                                      set: { player.volume = Float($0) }))
+                                      set: { player.volume = Float($0) }),
+                       label: "Volume")
         }
         .help("Player volume  (⌘↑ / ⌘↓)")
     }
@@ -367,6 +381,7 @@ struct PlayButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isPlaying ? "Pause" : "Play")
         .onHover { hovering = $0 }
         .animation(.spring(duration: 0.25), value: hovering)
         .animation(.easeOut(duration: 0.2), value: isPlaying)
@@ -475,7 +490,9 @@ struct Scrubber: View {
                             player.seek(to: scrubValue)
                             scrubbing = false
                         }
-                    }
+                    },
+                    label: "Position",
+                    valueText: { "\(Self.format($0)) of \(Self.format(duration))" }
                 )
 
                 Text("-" + Self.format(max(0, duration - position)))

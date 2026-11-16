@@ -153,6 +153,7 @@ struct LibraryView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(notice == nil ? Theme.ink.opacity(0.45) : Theme.mint)
                     .lineLimit(1)
+                    .help(notice == nil ? (library.lastScan?.detail ?? "") : "")
             }
 
             Spacer(minLength: 8)
@@ -173,6 +174,7 @@ struct LibraryView: View {
                                 .foregroundStyle(Theme.ink.opacity(0.4))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Clear search")
                     }
                 }
                 .pill()
@@ -221,6 +223,7 @@ struct LibraryView: View {
             let n = library.offlineFolders.count
             text += " · \(n) folder\(n == 1 ? "" : "s") offline"
         }
+        if let scan = library.lastScan?.text { text += " · " + scan }
         return text
     }
 
@@ -644,6 +647,8 @@ struct LibraryView: View {
         }
         .buttonStyle(.plain)
         .help(on ? "Remove from Favorites" : "Add to Favorites")
+        .accessibilityLabel("Favorite")
+        .accessibilityValue(on ? "On" : "Off")
     }
 
     private static func path(fromDrag item: String) -> String? {
@@ -903,6 +908,27 @@ struct EditTagsSheet: View {
 
     private var single: Bool { target.tracks.count == 1 }
 
+    /// How many of the songs are FLAC or MP3, the formats whose files can take the change.
+    private var writableCount: Int { target.tracks.filter { TagWriter.canWrite($0.url) }.count }
+
+    /// Says up front which files will change, so nobody expects an M4A or WAV to.
+    private var fileNote: String {
+        let total = target.tracks.count
+        let writable = writableCount
+        let others = Set(target.tracks.filter { !TagWriter.canWrite($0.url) }
+            .map { $0.url.pathExtension.uppercased() }).sorted().joined(separator: ", ")
+        if writable == 0 {
+            return (single ? "This \(others) file" : "These \(others) files")
+                + " cannot be written to; changes are kept in the library only. Only FLAC and MP3 files can be updated."
+        }
+        guard writeToFiles else { return "Changes are kept in the library only. The audio files are not modified." }
+        if writable == total {
+            return single ? "The file is updated, so other apps see the change."
+                          : "All \(total) files are updated, so other apps see the changes."
+        }
+        return "\(writable) of \(total) files (FLAC and MP3) are updated. The other \(total - writable) (\(others)) keep the changes in the library only."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
@@ -923,10 +949,10 @@ struct EditTagsSheet: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Toggle("Write changes into the audio files", isOn: $writeToFiles)
-                Text(writeToFiles
-                     ? "FLAC and MP3 files are updated, so other apps see the changes. Other formats keep them in the library only."
-                     : "Changes are kept in the library only. The audio files are not modified.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .disabled(writableCount == 0)
+                Text(fileNote)
+                    .font(.caption).foregroundStyle(writeToFiles && writableCount < target.tracks.count ? Theme.amber : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Spacer()

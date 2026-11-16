@@ -189,6 +189,8 @@ struct PanelToggles: View {
         }
         .buttonStyle(.plain)
         .help((isOn.wrappedValue ? "Hide the \(name.lowercased())" : "Show the \(name.lowercased())") + "  (\(key))")
+        .accessibilityLabel(name)
+        .accessibilityValue(isOn.wrappedValue ? "Shown" : "Hidden")
     }
 }
 

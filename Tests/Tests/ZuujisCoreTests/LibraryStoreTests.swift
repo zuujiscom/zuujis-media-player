@@ -69,6 +69,26 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.tracks.map(\.title), ["B"])
     }
 
+    func testScanSummaryCountsReadRemovedAndSkippedFiles() async {
+        let a = writeFLAC("S/a.flac", ["TITLE=A"])
+        _ = writeFLAC("S/b.flac", ["TITLE=B"])
+        FileManager.default.createFile(atPath: root.appendingPathComponent("S/cover.jpg").path, contents: Data())
+        FileManager.default.createFile(atPath: root.appendingPathComponent("S/song.wma").path, contents: Data())
+        let store = LibraryStore(fileURL: root.appendingPathComponent("lib.json"))
+        store.addFolders([root.appendingPathComponent("S")])
+        await settle(store)
+        XCTAssertEqual(store.lastScan?.read, 2)
+        XCTAssertEqual(store.lastScan?.skipped, 1)               // the .wma; cover art is expected
+        XCTAssertEqual(store.lastScan?.skippedExtensions, ["wma": 1])
+
+        try? FileManager.default.removeItem(at: a)
+        store.rescan()
+        await settle(store)
+        XCTAssertEqual(store.lastScan?.read, 0)
+        XCTAssertEqual(store.lastScan?.removed, 1)
+        XCTAssertEqual(store.lastScan?.text, "Last scan: 1 removed, 1 other file skipped")
+    }
+
     func testMissingFolderStaysListedAsOffline() async {
         _ = writeFLAC("Drive/x.flac", ["TITLE=X", "ARTIST=Y"])
         let folder = root.appendingPathComponent("Drive")

@@ -24,6 +24,44 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var isWriting = false
     /// Set when writing tags to files did not fully succeed; the UI shows and clears it.
     @Published var writeReport: String?
+    /// What the last finished scan did, for the library's status line.
+    @Published private(set) var lastScan: ScanSummary?
+
+    struct ScanSummary: Equatable, Sendable {
+        /// New or changed files whose tags were read.
+        var read = 0
+        /// Songs that were in the library and are no longer on disk.
+        var removed = 0
+        /// Songs kept from folders that could not be reached.
+        var keptOffline = 0
+        /// Files in the folders that are not a supported audio format.
+        var skipped = 0
+        var skippedExtensions: [String: Int] = [:]
+
+        /// One line for the status bar; nil when there is nothing to say.
+        var text: String? {
+            var parts: [String] = []
+            if read > 0 { parts.append("\(read) new or changed") }
+            if removed > 0 { parts.append("\(removed) removed") }
+            if skipped > 0 { parts.append("\(skipped) other file\(skipped == 1 ? "" : "s") skipped") }
+            return parts.isEmpty ? nil : "Last scan: " + parts.joined(separator: ", ")
+        }
+
+        /// The longer explanation shown on hover.
+        var detail: String {
+            var lines: [String] = []
+            lines.append("Tags read for \(read) new or changed song\(read == 1 ? "" : "s").")
+            if removed > 0 { lines.append("\(removed) song\(removed == 1 ? " was" : "s were") no longer on disk and left the library.") }
+            if keptOffline > 0 { lines.append("\(keptOffline) song\(keptOffline == 1 ? " is" : "s are") kept from folders that could not be reached; they return when the drive is connected.") }
+            if skipped > 0 {
+                let kinds = skippedExtensions.sorted { $0.value > $1.value }.prefix(6)
+                    .map { "\($0.key.isEmpty ? "no extension" : "." + $0.key) (\($0.value))" }
+                    .joined(separator: ", ")
+                lines.append("\(skipped) file\(skipped == 1 ? " was" : "s were") skipped because the format is not supported: \(kinds).")
+            }
+            return lines.joined(separator: "\n")
+        }
+    }
 
     let fileURL: URL
     private var scanTask: Task<Void, Never>?
@@ -84,6 +122,7 @@ final class LibraryStore: ObservableObject {
         var folder: URL
         var online: Bool
         var files: [FileInfo]
+        var skipped: [String: Int] = [:]
     }
 
     func rescan() {
@@ -106,11 +145,19 @@ final class LibraryStore: ObservableObject {
             var kept: [String: LibraryTrack] = [:]
             var pending: [FileInfo] = []
             var offline = Set<URL>()
+            var summary = ScanSummary()
             for entry in listing {
                 if !entry.online {
                     offline.insert(entry.folder)
-                    for (id, track) in cache where Self.folder(entry.folder, contains: id) { kept[id] = track }
+                    for (id, track) in cache where Self.folder(entry.folder, contains: id) {
+                        if kept[id] == nil { summary.keptOffline += 1 }
+                        kept[id] = track
+                    }
                     continue
+                }
+                for (ext, n) in entry.skipped {
+                    summary.skippedExtensions[ext, default: 0] += n
+                    summary.skipped += n
                 }
                 for file in entry.files where kept[file.url.path] == nil {
                     if let hit = cache[file.url.path], hit.size == file.size, hit.modified == file.modified {
@@ -120,6 +167,9 @@ final class LibraryStore: ObservableObject {
                     }
                 }
             }
+            let pendingIDs = Set(pending.map(\.url.path))
+            summary.removed = cache.keys.filter { kept[$0] == nil && !pendingIDs.contains($0) }.count
+            summary.read = pending.count
             self.offlineFolders = offline
             self.tracks = Array(kept.values)
             self.scanTotal = pending.count
@@ -141,6 +191,7 @@ final class LibraryStore: ObservableObject {
             }
             guard !Task.isCancelled else { return }
             self.merge(batch)
+            self.lastScan = summary
             self.isScanning = false
             self.scheduleSave()
         }
@@ -167,12 +218,22 @@ final class LibraryStore: ObservableObject {
                 return Listing(folder: folder, online: false, files: [])
             }
             var files: [FileInfo] = []
-            for case let url as URL in walker where LibraryModel.audioExtensions.contains(url.pathExtension.lowercased()) {
+            var skipped: [String: Int] = [:]
+            for case let url as URL in walker {
+                let ext = url.pathExtension.lowercased()
                 let values = try? url.resourceValues(forKeys: Set(keys))
+                guard LibraryModel.audioExtensions.contains(ext) else {
+                    // Only regular files count: folders are walked into, and
+                    // artwork and playlists beside the music are expected.
+                    if values?.isRegularFile == true, !LibraryScan.expectedCompanions.contains(ext) {
+                        skipped[ext, default: 0] += 1
+                    }
+                    continue
+                }
                 files.append(FileInfo(url: url, size: Int64(values?.fileSize ?? 0),
                                       modified: values?.contentModificationDate ?? .distantPast))
             }
-            return Listing(folder: folder, online: true, files: files)
+            return Listing(folder: folder, online: true, files: files, skipped: skipped)
         }
     }
 
@@ -301,4 +362,12 @@ final class LibraryStore: ObservableObject {
     func saveNow() {
         SavedFile.save(Saved(folders: folders, tracks: tracks, edits: edits, schema: Self.schema), to: fileURL, label: "library")
     }
+}
+
+enum LibraryScan {
+    /// Files that normally sit beside music and are not worth reporting as skipped.
+    static let expectedCompanions: Set<String> = [
+        "jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff",
+        "m3u", "m3u8", "pls", "cue", "log", "txt", "nfo", "pdf", "sfv", "md5", "accurip", "lrc", "db", "ini",
+    ]
 }

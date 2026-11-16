@@ -194,7 +194,10 @@ struct LyricsBox: View {
         GeometryReader { geo in
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 10) {
+                    // Not lazy: a lazy stack estimates the height of rows it has
+                    // not laid out, and the scroll to the next line jumped
+                    // whenever that estimate was corrected mid-animation.
+                    VStack(alignment: .leading, spacing: 10) {
                         // Room above and below, so the first and last lines
                         // can reach the reading position too.
                         Color.clear.frame(height: max(34, geo.size.height * 0.36))
@@ -282,21 +285,56 @@ private struct LyricRow: View {
             : text.foregroundStyle(Theme.ink.opacity(hovering ? 0.8 : max(0.16, 0.55 - 0.1 * Double(near))))
     }
 
+    /// Lines that are not being sung are drawn at this fraction of full size.
+    private static let restingScale: CGFloat = 0.82
+
     var body: some View {
         let active = distance == 0
         let size = min(26, max(15, width / 17))
         let near = abs(distance)
+        let scale = active ? 1 : Self.restingScale
 
-        content(active: active, near: near)
-            .font(.system(size: active ? size : size * 0.82, weight: active ? .bold : .semibold))
-            .tracking(active ? -0.2 : 0)
-            .shadow(color: active ? Theme.violet.opacity(0.55) : .clear, radius: 10)
-            .blur(radius: active || hovering ? 0 : min(1.6, 0.35 * Double(max(0, near - 1))))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .contentShape(Rectangle())
-            .onHover { hovering = $0 }
-            .animation(.smooth(duration: 0.4), value: active)
-            .animation(.easeOut(duration: 0.15), value: hovering)
+        // Every line is laid out at the full size, at the full width, and only
+        // scaled down when it is not being sung. Animating the font size made a
+        // long line re-wrap partway through (one line, then two), so its height
+        // jumped while the list was scrolling to it: the flicker. Now the wrap
+        // never changes, and the row's height shrinks smoothly with the scale.
+        ScaledRow(scale: scale) {
+            content(active: active, near: near)
+                .font(.system(size: size, weight: .bold))
+                .tracking(-0.2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .scaleEffect(scale, anchor: .topLeading)
+        }
+        .shadow(color: active ? Theme.violet.opacity(0.55) : .clear, radius: 10)
+        .blur(radius: active || hovering ? 0 : min(1.6, 0.35 * Double(max(0, near - 1))))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.smooth(duration: 0.4), value: active)
+        .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+}
+
+/// Lays its content out at the full width offered and reports its height times
+/// `scale`, so a row drawn with `scaleEffect` takes only the room it shows.
+/// `scale` animates, so the rows around a line that grows move smoothly.
+private struct ScaledRow: Layout {
+    var scale: CGFloat
+
+    var animatableData: CGFloat {
+        get { scale }
+        set { scale = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let full = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? full.width, height: full.height * scale)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
