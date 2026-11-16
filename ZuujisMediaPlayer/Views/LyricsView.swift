@@ -95,22 +95,18 @@ struct LyricsCard: View {
 /// The lyrics box. Synced lyrics follow the song: the line being sung is large
 /// and lit in the signal colours, the lines around it fade with distance, and
 /// the list scrolls to keep it in view through seeks, speed changes and the
-/// next track. Click a line to jump to it. Plain lyrics just scroll. With
-/// none found it says where they come from.
+/// next track. Click a line to jump to it (that list is `SyncedLyricsView`, a
+/// layer view). Plain lyrics just scroll. With none found it says where they
+/// come from.
 struct LyricsBox: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var store: LyricsStore
     /// The corner badge; the main window's card shows it in its header instead.
     var showsBadge = true
-    @State private var current: Int?
-    /// How many words of the current line have been sung, for word-timed lines.
-    @State private var sung = 0
-    @State private var userScrolledAt = Date.distantPast
-
     var body: some View {
         ZStack {
             if let lyrics = store.lyrics, player.track != nil {
-                if lyrics.isSynced { synced(lyrics) } else { plain(lyrics) }
+                if lyrics.isSynced { SyncedLyrics(lyrics: lyrics) } else { plain(lyrics) }
             } else {
                 empty
             }
@@ -120,24 +116,6 @@ struct LyricsBox: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
         .overlay(alignment: .topTrailing) { if showsBadge { badge } }
-        .onAppear(perform: update)
-        .onChange(of: store.lyrics) { _, _ in current = nil; update() }
-        .onChange(of: store.offset) { _, _ in update() }
-        .onReceive(player.timelineChanged) { update() }
-        // The line only needs checking while the song moves; seeks and
-        // speed changes arrive through `timelineChanged`.
-        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
-            if player.state == .playing { update() }
-        }
-    }
-
-    private func update() {
-        guard let lyrics = store.lyrics, lyrics.isSynced else { if current != nil { current = nil }; return }
-        let time = store.time(for: player)
-        let index = lyrics.currentIndex(at: time)
-        if index != current { current = index }
-        let words = index.map { lyrics.lines[$0].wordsSung(at: time) } ?? 0
-        if words != sung { sung = words }
     }
 
     // MARK: States
@@ -190,43 +168,6 @@ struct LyricsBox: View {
         .padding(16)
     }
 
-    private func synced(_ lyrics: Lyrics) -> some View {
-        GeometryReader { geo in
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
-                    // Not lazy: a lazy stack estimates the height of rows it has
-                    // not laid out, and the scroll to the next line jumped
-                    // whenever that estimate was corrected mid-animation.
-                    VStack(alignment: .leading, spacing: 10) {
-                        // Room above and below, so the first and last lines
-                        // can reach the reading position too.
-                        Color.clear.frame(height: max(34, geo.size.height * 0.36))
-                        ForEach(lyrics.lines) { line in
-                            LyricRow(line: line, distance: current.map { line.id - $0 } ?? (line.id + 1),
-                                     width: geo.size.width, sung: line.id == current ? sung : nil)
-                                .id(line.id)
-                                .onTapGesture {
-                                    if let time = line.time { player.seek(to: time) }
-                                }
-                        }
-                        Color.clear.frame(height: geo.size.height * 0.55)
-                    }
-                    .padding(.horizontal, 22)
-                }
-                .mask(edgeFade)
-                .onChange(of: current) { _, index in
-                    guard let index else { return }
-                    withAnimation(.smooth(duration: 0.55)) {
-                        proxy.scrollTo(index, anchor: UnitPoint(x: 0.5, y: 0.36))
-                    }
-                }
-                .onChange(of: store.lyrics) { _, _ in
-                    proxy.scrollTo(0, anchor: .top)
-                }
-            }
-        }
-    }
-
     private func plain(_ lyrics: Lyrics) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 6) {
@@ -251,90 +192,5 @@ struct LyricsBox: View {
                                .init(color: .black, location: 0.82),
                                .init(color: .clear, location: 1)],
                        startPoint: .top, endPoint: .bottom)
-    }
-}
-
-/// One line. Distance from the line being sung sets its size, brightness and
-/// blur; the current one is lit.
-private struct LyricRow: View {
-    let line: LyricLine
-    /// 0 is the line being sung; negative is behind it, positive ahead.
-    let distance: Int
-    let width: CGFloat
-    /// For the line being sung, when it has word times: how many words are lit.
-    var sung: Int? = nil
-    @State private var hovering = false
-
-    private static var lit: AnyShapeStyle {
-        AnyShapeStyle(LinearGradient(colors: Theme.signalColors, startPoint: .leading, endPoint: .trailing))
-    }
-
-    /// The line as text: word by word when it is being sung and has word
-    /// times (sung words lit, the rest dim), otherwise whole.
-    private func content(active: Bool, near: Int) -> Text {
-        if active, let sung, let words = line.words, !words.isEmpty {
-            return words.enumerated().reduce(Text("")) { text, item in
-                let word = Text((item.offset > 0 ? " " : "") + item.element.text)
-                return text + (item.offset < sung
-                               ? word.foregroundStyle(Self.lit)
-                               : word.foregroundStyle(Theme.ink.opacity(0.42)))
-            }
-        }
-        let text = Text(line.text.isEmpty ? "♪" : line.text)
-        return active ? text.foregroundStyle(Self.lit)
-            : text.foregroundStyle(Theme.ink.opacity(hovering ? 0.8 : max(0.16, 0.55 - 0.1 * Double(near))))
-    }
-
-    /// Lines that are not being sung are drawn at this fraction of full size.
-    private static let restingScale: CGFloat = 0.82
-
-    var body: some View {
-        let active = distance == 0
-        let size = min(26, max(15, width / 17))
-        let near = abs(distance)
-        let scale = active ? 1 : Self.restingScale
-
-        // Every line is laid out at the full size, at the full width, and only
-        // scaled down when it is not being sung. Animating the font size made a
-        // long line re-wrap partway through (one line, then two), so its height
-        // jumped while the list was scrolling to it: the flicker. Now the wrap
-        // never changes, and the row's height shrinks smoothly with the scale.
-        ScaledRow(scale: scale) {
-            content(active: active, near: near)
-                .font(.system(size: size, weight: .bold))
-                .tracking(-0.2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .scaleEffect(scale, anchor: .topLeading)
-        }
-        .shadow(color: active ? Theme.violet.opacity(0.55) : .clear, radius: 10)
-        .blur(radius: active || hovering ? 0 : min(1.6, 0.35 * Double(max(0, near - 1))))
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .animation(.smooth(duration: 0.4), value: active)
-        .animation(.easeOut(duration: 0.15), value: hovering)
-    }
-}
-
-/// Lays its content out at the full width offered and reports its height times
-/// `scale`, so a row drawn with `scaleEffect` takes only the room it shows.
-/// `scale` animates, so the rows around a line that grows move smoothly.
-private struct ScaledRow: Layout {
-    var scale: CGFloat
-
-    var animatableData: CGFloat {
-        get { scale }
-        set { scale = newValue }
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        guard let child = subviews.first else { return .zero }
-        let full = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
-        return CGSize(width: proposal.width ?? full.width, height: full.height * scale)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
-                              proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
