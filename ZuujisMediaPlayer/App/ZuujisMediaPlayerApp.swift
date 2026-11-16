@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // "Show All Tabs" out of the View menu.
         NSWindow.allowsAutomaticWindowTabbing = false
         PointerThrottle.install()
+        WindowPlacement.install()
 
         // Started by the system at login: stay in the menu bar instead of
         // putting a window in the user's face. The window is only hidden, so

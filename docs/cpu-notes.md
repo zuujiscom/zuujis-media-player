@@ -49,6 +49,28 @@ For comparison, Apple Music plays at 3–5% and about 125 MB; this app uses abou
 | `vDSP_biquadmD` | 3.8–4.4 ms | In the app it was 1.25% of a core against Apple's 2.0%: the audio thread runs on slower cores than a benchmark does. |
 | `BiquadEQ.cascade` (staggered, `SIMD2<Double>`) | 1.5 ms | Bit-identical output to `vDSP_biquadmD`. 0.45% of a core in the app. |
 
+## Memory (2026-11-16)
+
+Measure with `footprint <pid>` (the figure Activity Monitor shows), `heap <pid> -s` for what is on the heap, and, launched with `open --env MallocStackLogging=lite`, `malloc_history <pid> -allBySize` for who allocated it (stack logging itself adds tens of MB; take totals without it).
+
+Apple Music's 125 MB was read with an empty library, so it is a loose reference, not a target: this app holds a 1,000-song library, its lyrics and a 31-band EQ window.
+
+| State | Before | After |
+|---|---|---|
+| Fresh launch, EQ on, library + lyrics + faders shown | 112 MB | 120 MB |
+| After scrolling the songs and albums lists end to end, twice | 157 MB, never returned | 119 MB |
+| CPU while the songs list scrolls | ~85% | ~62% |
+
+- The footprint is almost all SwiftUI bookkeeping (about 75 MB of small heap blocks: 70,000 `PropertyList.Element`s, the attribute graph, 240 main-menu items at about 10 MB). No single app allocation is large: the library's 1,000 tracks are under 2 MB.
+- **The growth was the library lists.** A `LazyVStack` keeps every row it has ever shown, and a row costs 30-100 KB, mostly its context menu (the Add to Playlist and genre submenus are built for every row up front). Fix: `WindowedRows`, which only builds the rows in view. `List` was tried first and was worse: 222 MB at launch, every row built eagerly.
+- Fresh launch is 8 MB higher than before because the windowed lists build about 24 rows per list where the lazy stack built the 8 visible ones. A smaller margin would win some back at the risk of gaps while scrolling fast.
+- Not looked at: the visualizer window, Settings, and the lyric-timing speech model, any of which may account for part of the 210 MB once seen.
+
+### Ideas not done (memory)
+
+- Row context menus built on demand (an AppKit menu on right-click) instead of SwiftUI `contextMenu` on every row: would cut the per-row cost several times over.
+- The main menu's 10 MB: the Visualizer menu lists every mode and 60 MilkDrop presets.
+
 ## Ideas not done
 
 - The EQ could go further by filtering four sections at a time with wider vectors; at 0.45% of a core there is little left to win.
@@ -60,4 +82,4 @@ For comparison, Apple Music plays at 3–5% and about 125 MB; this app uses abou
 
 ## Not yet checked by hand
 
-The new EQ filter by ear (a sweep of one fader while a song plays, preset changes, bypass), and the audio-route checklist sections 3–5 with it (output switches, permission, sleep; sections 1–2 were run by script on 2026-11-16); resume after a long pause across an output-device change; the route picking up another app's sound after hours of silence; scrubber drag-seek, hover knob and VoiceOver; lyrics click-to-seek, scroll and hover; Light theme for the layer views; fader scroll wheel, context menu and tooltips.
+The library lists after the move to `WindowedRows` (right-click menus, drag to a playlist, shift/cmd selection, double-click to play, keyboard, VoiceOver, Light theme, the Genres and Playlists views); the window reopening on its screen with the second display unplugged or after closing and reopening from the menu bar; the new EQ filter by ear (a sweep of one fader while a song plays, preset changes, bypass), and the audio-route checklist sections 3–5 with it (output switches, permission, sleep; sections 1–2 were run by script on 2026-11-16); resume after a long pause across an output-device change; the route picking up another app's sound after hours of silence; scrubber drag-seek, hover knob and VoiceOver; lyrics click-to-seek, scroll and hover; Light theme for the layer views; fader scroll wheel, context menu and tooltips.

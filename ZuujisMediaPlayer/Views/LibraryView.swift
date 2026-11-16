@@ -83,7 +83,7 @@ struct LibraryView: View {
                             }
                             .buttonStyle(.plain)
                             .help("New playlist")
-                        }) { playlistList }.frame(width: 230)
+                        }) { ScrollView { LazyVStack(spacing: 1) { playlistList }.padding(5) } }.frame(width: 230)
                         column(title: "Songs", count: currentPlaylist?.paths.count ?? 0, selected: selection.count) { playlistSongList }
                     }
                 }
@@ -288,10 +288,7 @@ struct LibraryView: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
             Rectangle().fill(Theme.hairline).frame(height: 1)
-            ScrollView {
-                LazyVStack(spacing: 1) { content() }
-                    .padding(5)
-            }
+            content()
         }
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.well.opacity(Theme.palette.isLight ? 1 : 0.72)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
@@ -305,9 +302,11 @@ struct LibraryView: View {
     // MARK: Genres
 
     private var genreList: some View {
-        Group {
-            row("All Genres", detail: "\(library.tracks.count)", icon: .symbol("guitars.fill"), selected: genre == nil) { genre = nil }
-            ForEach(genres) { entry in
+        WindowedRows(count: genres.count + 1, rowHeight: 30) { index in
+            if index == 0 {
+                row("All Genres", detail: "\(library.tracks.count)", icon: .symbol("guitars.fill"), selected: genre == nil) { genre = nil }
+            } else if index <= genres.count {
+                let entry = genres[index - 1]
                 row(entry.name, detail: "\(entry.trackCount)", icon: .genre, selected: genre == entry.name) { genre = entry.name }
                     .contextMenu {
                         let tracks = LibraryModel.songs(library.tracks, inGenre: entry.name)
@@ -332,9 +331,11 @@ struct LibraryView: View {
     // MARK: Artists and albums
 
     private var artistList: some View {
-        Group {
-            row("All Artists", detail: "\(scoped.count)", icon: .symbol("person.2.fill"), selected: artist == nil) { artist = nil }
-            ForEach(artists) { entry in
+        WindowedRows(count: artists.count + 1, rowHeight: 30) { index in
+            if index == 0 {
+                row("All Artists", detail: "\(scoped.count)", icon: .symbol("person.2.fill"), selected: artist == nil) { artist = nil }
+            } else if index <= artists.count {
+                let entry = artists[index - 1]
                 row(entry.name, detail: "\(entry.trackCount)", icon: .artist, selected: artist == entry.name) { artist = entry.name }
                     .contextMenu {
                         let tracks = LibraryModel.songs(scoped, artist: entry.name, album: nil)
@@ -350,13 +351,18 @@ struct LibraryView: View {
     }
 
     private var albumList: some View {
-        Group {
-            row("All Albums", detail: "", icon: .symbol("square.stack"), selected: album == nil) { album = nil }
-            ForEach(albums) { entry in
+        // With an artist chosen the rows lose their second line.
+        let height: CGFloat = artist == nil ? 37 : 34
+        return WindowedRows(count: albums.count + 1, rowHeight: height) { index in
+            if index == 0 {
+                row("All Albums", detail: "", icon: .symbol("square.stack"), height: height, selected: album == nil) { album = nil }
+            } else if index <= albums.count {
+                let entry = albums[index - 1]
                 row(entry.name,
                     detail: entry.year.map(String.init) ?? "",
                     subtitle: artist == nil ? entry.artist : nil,
                     icon: .album,
+                    height: height,
                     selected: album == entry) { album = entry }
                     .contextMenu {
                         let tracks = LibraryModel.songs(scoped, artist: entry.artist, album: entry)
@@ -373,9 +379,15 @@ struct LibraryView: View {
 
     // MARK: Songs
 
+    /// One line when both an artist and an album are chosen, two otherwise.
+    private var songRowHeight: CGFloat { artist == nil || album == nil ? 37 : 24 }
+
     private var songList: some View {
         let playing = queue.current?.url
-        return ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+        let height = songRowHeight
+        return WindowedRows(count: songs.count, rowHeight: height) { index in
+          if index < songs.count {
+            let song = songs[index]
             let isCurrent = song.url == playing
             let isSelected = selection.contains(song.id)
             HStack(spacing: 8) {
@@ -411,6 +423,7 @@ struct LibraryView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
+            .frame(height: height)
             .modifier(RowHighlight(isSelected: isSelected, isCurrent: isCurrent))
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.play(urls: songs.map(\.url), startingAt: index) }
@@ -437,6 +450,7 @@ struct LibraryView: View {
                 Divider()
                 Button("Select All Songs") { selection = Set(songs.map(\.id)) }
             }
+          }
         }
     }
 
@@ -489,22 +503,22 @@ struct LibraryView: View {
 
     private var playlistSongList: some View {
         Group {
-            if let list = currentPlaylist {
-                if list.paths.isEmpty {
-                    Text("Empty. Add songs from the Artists or Genres view, or drag them onto this playlist.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.ink.opacity(0.4))
-                        .padding(8)
-                }
+            if let list = currentPlaylist, !list.paths.isEmpty {
                 let playable = PlayableList(list.paths)
-                ForEach(Array(list.paths.enumerated()), id: \.element) { index, path in
-                    playlistSongRow(path: path, index: index, list: list, playable: playable)
+                WindowedRows(count: list.paths.count, rowHeight: 37) { index in
+                    if index < list.paths.count {
+                        playlistSongRow(path: list.paths[index], index: index, list: list, playable: playable)
+                    }
                 }
             } else {
-                Text(playlists.playlists.isEmpty ? "" : "Choose a playlist.")
+                let note = currentPlaylist != nil
+                    ? "Empty. Add songs from the Artists or Genres view, or drag them onto this playlist."
+                    : (playlists.playlists.isEmpty ? "" : "Choose a playlist.")
+                Text(note)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.ink.opacity(0.4))
-                    .padding(8)
+                    .padding(13)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -544,6 +558,7 @@ struct LibraryView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .frame(height: 37)
         .modifier(RowHighlight(isSelected: isSelected, isCurrent: isCurrent))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
@@ -724,7 +739,7 @@ struct LibraryView: View {
     }
 
     private func row(_ title: String, detail: String, subtitle: String? = nil, icon: RowIcon = .none,
-                     selected: Bool, action: @escaping () -> Void) -> some View {
+                     height: CGFloat = 30, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 switch icon {
@@ -761,7 +776,7 @@ struct LibraryView: View {
             .padding(.leading, 7)
             .padding(.trailing, 8)
             .padding(.vertical, 4)
-            .frame(minHeight: 30)
+            .frame(height: height)
             .modifier(RowHighlight(isSelected: selected))
             // The selected row carries the signal colours as a bar on its edge.
             .overlay(alignment: .leading) {
@@ -1026,5 +1041,67 @@ private struct PlayableList {
     init(_ all: [String]) {
         paths = all.filter { FileManager.default.fileExists(atPath: $0) }
         position = Dictionary(paths.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+}
+
+/// A scrolling list of rows of one height, of which only the rows near the
+/// visible part exist.
+///
+/// A `LazyVStack` builds rows as they scroll into view and then keeps every
+/// one of them: scrolling through 1,000 songs and the albums grew the app by
+/// 45 MB that never came back (a row with its context menu is 30 to 100 KB).
+/// A `List` is worse here: it built all the rows at launch, another 110 MB.
+/// So the rows are placed by arithmetic instead: a spacer for the rows above,
+/// the rows in view plus a margin, a spacer for the rest. The window moves in
+/// steps of `chunk` rows, so scrolling changes it a few times a second at most.
+struct WindowedRows<Row: View>: View {
+    let count: Int
+    /// Every row is given exactly this height; a 1 pt gap follows each.
+    let rowHeight: CGFloat
+    @ViewBuilder let row: (Int) -> Row
+
+    @State private var window = 0..<(3 * WindowedRowsMath.chunk)
+
+    var body: some View {
+        let pitch = rowHeight + 1
+        let lower = min(window.lowerBound, count)
+        let upper = min(window.upperBound, count)
+        ScrollView {
+            VStack(spacing: 0) {
+                Color.clear.frame(height: CGFloat(lower) * pitch)
+                ForEach(lower..<upper, id: \.self) { index in
+                    row(index)
+                        .frame(height: rowHeight)
+                        .padding(.bottom, 1)
+                }
+                Color.clear.frame(height: CGFloat(count - upper) * pitch)
+            }
+            .padding(5)
+        }
+        .onScrollGeometryChange(for: Range<Int>.self) { geometry in
+            WindowedRowsMath.window(offset: geometry.contentOffset.y + geometry.contentInsets.top - 5,
+                                    height: geometry.containerSize.height, pitch: pitch)
+        } action: { _, new in
+            window = new
+        }
+    }
+}
+
+enum WindowedRowsMath {
+    static let chunk = 8
+    /// Rows kept beyond the visible ones on each side, before rounding out
+    /// to a chunk: enough that a scroll step never shows a gap.
+    static let margin = 3
+
+    /// The rows to build for a view `height` tall scrolled to `offset`: the
+    /// visible ones and the margin, rounded out to chunk boundaries. Rows are
+    /// expensive (see `WindowedRows`), so the window is kept tight.
+    static func window(offset: CGFloat, height: CGFloat, pitch: CGFloat) -> Range<Int> {
+        guard pitch > 0 else { return 0..<(3 * chunk) }
+        let first = max(0, Int((offset / pitch).rounded(.down)))
+        let last = first + max(0, Int((height / pitch).rounded(.up)))
+        let lower = max(0, (first - margin) / chunk * chunk)
+        let upper = ((last + margin) / chunk + 1) * chunk
+        return lower..<upper
     }
 }
