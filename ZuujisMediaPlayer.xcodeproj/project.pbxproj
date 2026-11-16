@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4FBD593B480266CFDE08D108 /* LiveViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F75F1D4662988C200741D /* LiveViews.swift */; };
 		FABA1AACAFB7E78731682CE0 /* LoudnessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */; };
 		261E5AEE368C23DBDE225A8C /* LimiterUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDE789C2F61574CEBA8E7E0D /* LimiterUnit.swift */; };
 		0B6E55AE3A87275057DD287C /* ReplayGainTags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA858080551B282758F4252 /* ReplayGainTags.swift */; };
@@ -73,6 +74,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		8A7F75F1D4662988C200741D /* LiveViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveViews.swift; sourceTree = "<group>"; };
 		5270FFEBD0B33ECC859D59B4 /* LoudnessStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoudnessStore.swift; sourceTree = "<group>"; };
 		DDE789C2F61574CEBA8E7E0D /* LimiterUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimiterUnit.swift; sourceTree = "<group>"; };
 		3DA858080551B282758F4252 /* ReplayGainTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayGainTags.swift; sourceTree = "<group>"; };
@@ -312,6 +314,7 @@
 				7720875FAEA740A0AF9B85D8 /* SpeedControl.swift */,
 				FB440F2680547BF527186F00 /* LyricsView.swift */,
 				78E0743891276C438B68CF42 /* Controls.swift */,
+				8A7F75F1D4662988C200741D /* LiveViews.swift */,
 				9D6AAB14FE755A51AAD9E47F /* SettingsView.swift */,
 				2000000000000000000000B3 /* LibraryView.swift */,
 			);
@@ -490,6 +493,7 @@
 				A220C3FAF3990A9CE5A41896 /* SpeedControl.swift in Sources */,
 				C63CEE1AE03F025CD74D49D4 /* LyricsView.swift in Sources */,
 				896C3F7E7181D2B50EEF74A8 /* Controls.swift in Sources */,
+				4FBD593B480266CFDE08D108 /* LiveViews.swift in Sources */,
 				2B4F79A3A55AC3A4578B8095 /* SettingsView.swift in Sources */,
 				1000000000000000000000B3 /* LibraryView.swift in Sources */,
 			);

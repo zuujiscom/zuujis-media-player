@@ -10,13 +10,11 @@ import SwiftUI
 /// Keeps its historical name; it grew from the spectrum panel.
 struct SpectrumView: View {
     @EnvironmentObject private var engine: AudioEngine
-    @EnvironmentObject private var meters: MeterState
     @EnvironmentObject private var player: PlayerEngine
     /// The ± dB span of the graph. Widens by itself when a band exceeds it.
     @AppStorage("eqGraphRange") private var rangeSetting = 12.0
     /// A fixed height for the graph; nil lets it take the spare height.
     var graphHeight: CGFloat?
-    @State private var smoother = SpectrumSmoother()
     @State private var hover: CGPoint?
     @State private var isDragging = false
 
@@ -37,13 +35,13 @@ struct SpectrumView: View {
 
                 Spacer(minLength: 8)
 
-                LevelMeter(level: meters.snapshot.level)
+                LiveLevelMeter()
                     .frame(width: 96, height: 6)
                     .help("Output level")
 
                 if engine.isRunning {
-                    infoChip(meters.snapshot.latencyMs > 0 ? String(format: "%.1f ms", meters.snapshot.latencyMs) : "— ms")
-                        .frame(minWidth: 44, alignment: .trailing)
+                    LatencyChip()
+                        .frame(width: 50, height: 14)
                     infoChip(engine.outputFormat)
                 }
 
@@ -63,7 +61,7 @@ struct SpectrumView: View {
                         PresetMenu()
                         BypassButton()
                         Spacer(minLength: 8)
-                        LevelMeter(level: meters.snapshot.level)
+                        LiveLevelMeter()
                             .frame(width: 80, height: 6)
                     }
                 }
@@ -72,12 +70,14 @@ struct SpectrumView: View {
             PreampRow()
 
             GeometryReader { geo in
-                let layout = GraphLayout(size: geo.size, range: range)
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { timeline in
-                    Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
-                        render(&context, layout: layout, date: timeline.date)
-                    }
+                let layout = SpectrumGraphLayout(size: geo.size, range: range)
+                // The curve and handles redraw only when they change; the
+                // live spectrum underneath is a layer view (`LiveViews.swift`),
+                // so its frames never re-run this card or the window.
+                Canvas(opaque: false, rendersAsynchronously: false) { context, _ in
+                    render(&context, layout: layout)
                 }
+                .background { ResponseSpectrum() }
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 2)
@@ -136,7 +136,7 @@ struct SpectrumView: View {
 
     // MARK: Editing
 
-    private func nearestBand(to x: CGFloat, layout: GraphLayout) -> Int? {
+    private func nearestBand(to x: CGFloat, layout: SpectrumGraphLayout) -> Int? {
         guard !engine.bands.isEmpty else { return nil }
         var best = 0
         var bestDistance = CGFloat.greatestFiniteMagnitude
@@ -150,7 +150,7 @@ struct SpectrumView: View {
         return best
     }
 
-    private func paint(at point: CGPoint, layout: GraphLayout) {
+    private func paint(at point: CGPoint, layout: SpectrumGraphLayout) {
         guard let index = nearestBand(to: point.x, layout: layout) else { return }
         let gain = (layout.gain(point.y) * 2).rounded() / 2
         let clamped = min(max(gain, AudioEngine.minBandGain), AudioEngine.maxBandGain)
@@ -159,20 +159,12 @@ struct SpectrumView: View {
         }
     }
 
-    /// Audio is flowing through something we meter: the system route, or the
-    /// file player (which meters its own output even with the engine off).
-    private var isLive: Bool { engine.isRunning || player.state == .playing }
-
     // MARK: Drawing
 
-    private func render(_ context: inout GraphicsContext, layout: GraphLayout, date: Date) {
+    private func render(_ context: inout GraphicsContext, layout: SpectrumGraphLayout) {
         let plot = layout.plot
         drawGrid(&context, layout: layout)
 
-        smoother.step(toward: meters.snapshot.spectrum, at: date, live: isLive)
-        if isLive {
-            drawSpectrum(&context, plot: plot)
-        }
         drawCurve(&context, layout: layout)
         drawHandles(&context, layout: layout)
 
@@ -189,7 +181,7 @@ struct SpectrumView: View {
         }
     }
 
-    private func drawGrid(_ context: inout GraphicsContext, layout: GraphLayout) {
+    private func drawGrid(_ context: inout GraphicsContext, layout: SpectrumGraphLayout) {
         let plot = layout.plot
         let labelled: [(Double, String)] = [
             (20, "20"), (50, "50"), (100, "100"), (200, "200"), (500, "500"),
@@ -241,64 +233,8 @@ struct SpectrumView: View {
         )
     }
 
-    /// A smooth line through `values`, one point per spectrum bin.
-    private func line(through values: [Float], plot: CGRect) -> Path {
-        var path = Path()
-        guard values.count > 1 else { return path }
-        func point(_ index: Int) -> CGPoint {
-            let x = plot.minX + (CGFloat(index) + 0.5) / CGFloat(values.count) * plot.width
-            let y = plot.maxY - CGFloat(min(1, max(0, values[index]))) * plot.height * 0.94
-            return CGPoint(x: x, y: y)
-        }
-        let first = point(0)
-        path.move(to: CGPoint(x: plot.minX, y: first.y))
-        path.addLine(to: first)
-        for index in 1..<values.count {
-            let previous = point(index - 1)
-            let current = point(index)
-            let mid = CGPoint(x: (previous.x + current.x) / 2, y: (previous.y + current.y) / 2)
-            path.addQuadCurve(to: mid, control: previous)
-            if index == values.count - 1 {
-                path.addQuadCurve(to: current, control: current)
-            }
-        }
-        path.addLine(to: CGPoint(x: plot.maxX, y: point(values.count - 1).y))
-        return path
-    }
 
-    private func drawSpectrum(_ context: inout GraphicsContext, plot: CGRect) {
-        let top = line(through: smoother.values, plot: plot)
-        var area = top
-        area.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
-        area.addLine(to: CGPoint(x: plot.minX, y: plot.maxY))
-        area.closeSubpath()
-
-        let across = GraphicsContext.Shading.linearGradient(
-            Gradient(colors: Theme.signalColors),
-            startPoint: CGPoint(x: plot.minX, y: 0), endPoint: CGPoint(x: plot.maxX, y: 0)
-        )
-        var fill = context
-        fill.opacity = 0.42
-        fill.fill(area, with: across)
-        // Fade the fill out toward the floor so the curve stays readable.
-        context.fill(area, with: .linearGradient(
-            Gradient(colors: [Theme.well.opacity(0), Theme.well.opacity(0.9)]),
-            startPoint: CGPoint(x: 0, y: plot.minY + plot.height * 0.35),
-            endPoint: CGPoint(x: 0, y: plot.maxY)
-        ))
-
-        context.drawLayer { layer in
-            layer.addFilter(.blur(radius: 5))
-            layer.opacity = 0.8
-            layer.stroke(top, with: across, lineWidth: 3)
-        }
-        context.stroke(top, with: across, style: StrokeStyle(lineWidth: 1.6, lineJoin: .round))
-
-        context.stroke(line(through: smoother.peaks, plot: plot),
-                       with: .color(Theme.ink.opacity(0.26)), lineWidth: 1)
-    }
-
-    private func drawCurve(_ context: inout GraphicsContext, layout: GraphLayout) {
+    private func drawCurve(_ context: inout GraphicsContext, layout: SpectrumGraphLayout) {
         let plot = layout.plot
         let rate = player.state == .playing ? player.graphSampleRate : engine.sampleRate
         let sections = EQResponse.sections(for: engine.bands, sampleRate: rate)
@@ -307,7 +243,7 @@ struct SpectrumView: View {
         var curve = Path()
         for index in 0...samples {
             let t = Double(index) / Double(samples)
-            let frequency = GraphLayout.minFrequency * pow(GraphLayout.maxFrequency / GraphLayout.minFrequency, t)
+            let frequency = SpectrumGraphLayout.minFrequency * pow(SpectrumGraphLayout.maxFrequency / SpectrumGraphLayout.minFrequency, t)
             let db = EQResponse.decibels(sections, at: frequency, sampleRate: rate)
             let point = CGPoint(x: plot.minX + CGFloat(t) * plot.width,
                                 y: min(plot.maxY, max(plot.minY, layout.y(db))))
@@ -348,7 +284,7 @@ struct SpectrumView: View {
                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
     }
 
-    private func drawHandles(_ context: inout GraphicsContext, layout: GraphLayout) {
+    private func drawHandles(_ context: inout GraphicsContext, layout: SpectrumGraphLayout) {
         let plot = layout.plot
         let bands = engine.bands
         let radius: CGFloat = bands.count > 20 ? 3 : (bands.count > 12 ? 4 : 5)
@@ -413,7 +349,7 @@ struct SpectrumView: View {
 /// Maps frequency and gain onto the graph. Frequency is logarithmic from
 /// 20 Hz to 20 kHz — the same span and spacing as the analyzer's 64 bins, so
 /// bin *i* of the spectrum lands at fraction *(i + 0.5) / 64* of the width.
-private struct GraphLayout {
+struct SpectrumGraphLayout {
     static let minFrequency = 20.0
     static let maxFrequency = 20_000.0
 

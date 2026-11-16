@@ -117,12 +117,10 @@ struct BandControlsView: View {
             }
 
             let withLevels = row.background(alignment: .topLeading) {
-                LiveLayer {
-                    BandLevelBackdrop(
-                        frequencies: engine.bands.map(\.frequency),
-                        column: column, spacing: Self.columnSpacing, trackLength: track
-                    )
-                }
+                BandLevelBackdrop(
+                    frequencies: engine.bands.map(\.frequency),
+                    column: column, spacing: Self.columnSpacing, trackLength: track
+                )
             }
             if fits {
                 withLevels.frame(width: geo.size.width, alignment: .center)
@@ -292,73 +290,6 @@ struct BandSlider: View {
 }
 
 // MARK: - Live level behind the faders
-
-/// A soft column of light behind each fader, as tall as the signal at that
-/// band's frequency — so you can see what a fader is acting on.
-///
-/// Its own view, and one `Canvas`, on purpose: it follows the meters, and the
-/// faders must not. Hanging this off `BandSlider` would invalidate every
-/// slider twenty times a second.
-struct BandLevelBackdrop: View {
-    @EnvironmentObject private var engine: AudioEngine
-    @EnvironmentObject private var meters: MeterState
-    @EnvironmentObject private var player: PlayerEngine
-    @State private var smoother = SpectrumSmoother()
-
-    let frequencies: [Double]
-    let column: CGFloat
-    let spacing: CGFloat
-    let trackLength: CGFloat
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { timeline in
-            Canvas(opaque: false, rendersAsynchronously: false) { context, size in
-                smoother.step(toward: meters.snapshot.spectrum, at: timeline.date, live: isLive)
-                guard isLive, !frequencies.isEmpty else { return }
-
-                let values = smoother.values
-                let bottom = BandSlider.trackTop + trackLength - 7
-                let reach = trackLength - 14
-                let width = min(column - 2, 18)
-                for (index, frequency) in frequencies.enumerated() {
-                    let t = log10(min(max(frequency, 20), 20_000) / 20) / 3
-                    let bin = min(values.count - 1, max(0, Int(t * Double(values.count))))
-                    let level = CGFloat(min(1, max(0, values[bin])))
-                    guard level > 0.01 else { continue }
-
-                    let centre = CGFloat(index) * (column + spacing) + column / 2
-                    let height = level * reach
-                    let rect = CGRect(x: centre - width / 2, y: bottom - height, width: width, height: height)
-                    let tint = Self.tint(at: Double(index) / Double(max(1, frequencies.count - 1)))
-                    context.fill(
-                        Path(roundedRect: rect, cornerRadius: 3),
-                        with: .linearGradient(
-                            Gradient(colors: [tint.opacity(0.34), tint.opacity(0.03)]),
-                            startPoint: CGPoint(x: 0, y: rect.minY), endPoint: CGPoint(x: 0, y: rect.maxY)
-                        )
-                    )
-                    context.fill(
-                        Path(roundedRect: CGRect(x: rect.minX, y: rect.minY, width: width, height: 1.5),
-                             cornerRadius: 0.75),
-                        with: .color(tint.opacity(0.75))
-                    )
-                }
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    /// Audio is flowing through something metered: the system route, or the
-    /// file player, which meters its own output with the EQ off. The same
-    /// rule as the Response graph.
-    private var isLive: Bool { engine.isRunning || player.state == .playing }
-
-    /// The signal gradient, sampled: cyan at the low end, pink at the top.
-    private static func tint(at t: Double) -> Color {
-        t < 0.5 ? Theme.cyan.mix(with: Theme.violet, by: t * 2)
-                : Theme.violet.mix(with: Theme.pink, by: (t - 0.5) * 2)
-    }
-}
 
 // MARK: - Vertical Gain Slider
 
