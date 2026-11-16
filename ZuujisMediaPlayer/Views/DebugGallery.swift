@@ -19,7 +19,14 @@ enum DebugGallery {
         ProcessInfo.processInfo.environment["ZMP_GALLERY"].map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
-    private static let tile = (width: 480, height: 300)
+    /// `ZMP_GALLERY_TILE=1280x720` renders bigger tiles, for a close look.
+    private static let tile: (width: Int, height: Int) = {
+        if let parts = ProcessInfo.processInfo.environment["ZMP_GALLERY_TILE"]?
+            .split(separator: "x").compactMap({ Int($0) }), parts.count == 2 {
+            return (parts[0], parts[1])
+        }
+        return (480, 300)
+    }()
 
     /// A stand-in for music: a kick on every beat, a moving mid peak, hats.
     static func syntheticFrame(at t: Double) -> VisualizerFrame {
@@ -63,7 +70,20 @@ enum DebugGallery {
 
         var presets = VisualizerMode.selectable.map { VisualizerPreset.standard(for: $0) }
         presets += VisualizerPreset.rotation
+        presets += VisualizerPreset.immersiveRotation
         presets += (0..<9).map { _ in VisualizerPreset.remix() }
+        // `ZMP_GALLERY_ONLY=Cathedral,Plume` renders just those presets (by
+        // preset or mode name), and saves three moments of each as its own
+        // PNG along with the GPU time a frame took.
+        let only = ProcessInfo.processInfo.environment["ZMP_GALLERY_ONLY"]?
+            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        if let only {
+            var seen = Set<String>()
+            presets = presets.filter {
+                (only.contains($0.name.lowercased()) || only.contains($0.mode.rawValue.lowercased()))
+                    && seen.insert($0.name).inserted
+            }
+        }
 
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: tile.width, height: tile.height, mipmapped: false
@@ -89,8 +109,10 @@ enum DebugGallery {
             }
             renderer.presetOverride = preset
 
+            var gpuTime = 0.0
             func render(_ frame: VisualizerFrame) {
                 guard let commandBuffer = queue.makeCommandBuffer() else { return }
+                defer { gpuTime = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime }
                 let pass = MTLRenderPassDescriptor()
                 pass.colorAttachments[0].texture = output
                 pass.colorAttachments[0].storeAction = .store
@@ -100,7 +122,17 @@ enum DebugGallery {
                 commandBuffer.waitUntilCompleted()
             }
 
-            for i in 0..<200 { render(syntheticFrame(at: Double(i) / 60)) }
+            let frames = only == nil ? 200 : 600
+            for i in 0..<frames {
+                render(syntheticFrame(at: Double(i) / 60))
+                if only != nil, [149, 359, 599].contains(i), let image = cgImage(from: frameBytes()) {
+                    let rep = NSBitmapImageRep(cgImage: image)
+                    let file = "\(preset.name.replacingOccurrences(of: " ", with: "-"))-\(i).png"
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: directory.appendingPathComponent(file))
+                }
+            }
+            if only != nil { report.append(String(format: "gpu %.1f ms  %@", gpuTime * 1000, preset.name)) }
             let lit = frameBytes()
             if let image = cgImage(from: lit) { tiles.append((preset.name, image)) }
 
@@ -265,6 +297,11 @@ enum DebugGallery {
                 try? await Task.sleep(for: .seconds(1))
                 if let window = NSApp.windows.first(where: { $0.title == "Visualizer" && $0.isVisible }) {
                     window.setContentSize(NSSize(width: 1100, height: 650))
+                    if env["ZMP_GALLERY_SCREEN"] == "left",
+                       let screen = NSScreen.screens.min(by: { $0.frame.minX < $1.frame.minX }) {
+                        window.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 60,
+                                                      y: screen.visibleFrame.maxY - window.frame.height - 60))
+                    }
                     window.orderFrontRegardless()
                     try? "\(window.windowNumber)".write(
                         to: directory.appendingPathComponent("visualizer-id.txt"), atomically: true, encoding: .utf8)

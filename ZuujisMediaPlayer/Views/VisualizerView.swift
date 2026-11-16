@@ -11,6 +11,14 @@ enum VisualizerMode: String, CaseIterable, Identifiable {
     case auto = "Auto"
     /// An imported MilkDrop preset drives the warp; see `MilkdropLibrary`.
     case milkdrop = "MilkDrop"
+    // Immersive — simulated or raymarched on the GPU; see `ImmersiveRenderer`
+    case murmuration = "Murmuration"
+    case singularity = "Singularity"
+    case attractor = "Attractor"
+    case liquid = "Liquid Light"
+    case plume = "Plume"
+    case deepField = "Deep Field"
+    case cathedral = "Cathedral"
     // Geometric
     case bars = "Bars"
     case mirror = "Mirror"
@@ -64,6 +72,20 @@ enum VisualizerMode: String, CaseIterable, Identifiable {
     case strings = "Strings"
 
     var id: String { rawValue }
+
+    /// Non-nil for the Immersive family, which `ImmersiveRenderer` draws.
+    var immersive: ImmersiveKind? {
+        switch self {
+        case .murmuration: return .murmuration
+        case .singularity: return .singularity
+        case .attractor: return .attractor
+        case .liquid: return .liquid
+        case .plume: return .plume
+        case .deepField: return .deepField
+        case .cathedral: return .cathedral
+        default: return nil
+        }
+    }
 
     /// Point-sprite modes draw additively; the rest draw opaque geometry.
     var isParticle: Bool {
@@ -189,6 +211,7 @@ enum VisualizerMode: String, CaseIterable, Identifiable {
 
     var family: String {
         if self == .auto || self == .milkdrop { return "Auto" }
+        if immersive != nil { return "Immersive" }
         if isProcedural { return "Shader" }
         if replicatorSpec != nil { return "Replicator" }
         if forceSpec != nil { return "Simulation" }
@@ -200,13 +223,16 @@ enum VisualizerMode: String, CaseIterable, Identifiable {
     static let storageKey = "visualizerMode"
 
     static var groups: [VisualizerModeGroup] {
-        ["Geometric", "Replicator", "Simulation", "Particles", "Shader"].map { family in
+        ["Immersive", "Geometric", "Replicator", "Simulation", "Particles", "Shader"].map { family in
             VisualizerModeGroup(id: family, modes: allCases.filter { $0.family == family })
         }
     }
 
     /// Everything that can be picked by hand or by the shuffle.
     static let selectable: [VisualizerMode] = allCases.filter { $0 != .auto && $0 != .milkdrop }
+
+    /// The older, flat modes: what `remix()` draws from.
+    static let classic: [VisualizerMode] = selectable.filter { $0.immersive == nil }
 }
 
 // MARK: - Motion-style composition
@@ -282,6 +308,18 @@ struct VisualizerPreset {
     /// Sensible feedback for a mode chosen by hand from the menu.
     static func standard(for mode: VisualizerMode) -> VisualizerPreset {
         switch mode {
+        case .murmuration, .singularity:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0.62, bloom: 0.9)
+        case .attractor:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0.70, paletteShift: 2.1, bloom: 0.9)
+        case .liquid:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0, paletteShift: 2.0, bloom: 0.55)
+        case .plume:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0, paletteShift: 0.0, bloom: 0.55)
+        case .deepField:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0, paletteShift: 0.0, bloom: 0.8, seed: 0.2)
+        case .cathedral:
+            return VisualizerPreset(name: mode.rawValue, mode: mode, decay: 0, paletteShift: 0.0, bloom: 0.7)
         case .bars, .mirror:
             return VisualizerPreset(name: mode.rawValue, mode: mode, zoom: 1.004, decay: 0.55)
         case .radial:
@@ -379,11 +417,35 @@ struct VisualizerPreset {
         VisualizerPreset(name: "Tightrope", mode: .strings, zoom: 1.03, rot: 0.006, decay: 0.90, paletteShift: 0.7, overlayAlpha: 0.35, additive: true)
     ]
 
+    /// The Immersive presets, which are what the shuffle plays unless the
+    /// classic ones are switched back in (the dwell menu's "Include classic
+    /// presets"). For these `paletteShift` picks the
+    /// gradient (whole part) and slides along it (fraction), and `seed` moves
+    /// the camera or, for Attractor, picks the system.
+    static let immersiveRotation: [VisualizerPreset] = [
+        VisualizerPreset(name: "Murmuration", mode: .murmuration, decay: 0.62, paletteShift: 0.0, bloom: 0.9, seed: 0.1),
+        VisualizerPreset(name: "Aurora Shell", mode: .murmuration, decay: 0.66, paletteShift: 3.15, bloom: 0.9, seed: 0.6),
+        VisualizerPreset(name: "Singularity", mode: .singularity, decay: 0.62, paletteShift: 1.0, bloom: 1.0, seed: 0.3),
+        VisualizerPreset(name: "Event Horizon", mode: .singularity, decay: 0.66, paletteShift: 2.2, bloom: 1.0, seed: 0.8),
+        VisualizerPreset(name: "Thomas Attractor", mode: .attractor, decay: 0.70, paletteShift: 2.1, bloom: 0.9, seed: 0.1),
+        VisualizerPreset(name: "Lorenz Attractor", mode: .attractor, decay: 0.70, paletteShift: 0.05, bloom: 0.9, seed: 0.5),
+        VisualizerPreset(name: "Halvorsen Attractor", mode: .attractor, decay: 0.70, paletteShift: 3.3, bloom: 0.9, seed: 0.9),
+        VisualizerPreset(name: "Liquid Light", mode: .liquid, decay: 0, paletteShift: 2.0, bloom: 0.55, seed: 0.3),
+        VisualizerPreset(name: "Plume", mode: .plume, decay: 0, paletteShift: 0.0, bloom: 0.55, seed: 0.5),
+        VisualizerPreset(name: "Deep Field", mode: .deepField, decay: 0, paletteShift: 0.0, bloom: 0.8, seed: 0.2),
+        VisualizerPreset(name: "Far Shore", mode: .deepField, decay: 0, paletteShift: 2.3, bloom: 0.8, seed: 0.7),
+        VisualizerPreset(name: "Cathedral", mode: .cathedral, decay: 0, paletteShift: 0.0, bloom: 0.7, seed: 0.1),
+        VisualizerPreset(name: "Neon Reliquary", mode: .cathedral, decay: 0, paletteShift: 2.4, bloom: 0.7, seed: 0.55)
+    ]
+
+    /// Whether the shuffle also plays the older presets and remixes of them.
+    static let classicInShuffleKey = "visualizerClassicInShuffle"
+
     /// A freshly invented preset: a random mode under a random feedback
     /// transform and palette. This is what keeps the shuffle from ever
     /// running out — the hand-tuned list is finite, this is not.
     static func remix(avoiding avoided: VisualizerMode? = nil) -> VisualizerPreset {
-        var pool = VisualizerMode.selectable
+        var pool = VisualizerMode.classic
         if let avoided, pool.count > 1 { pool.removeAll { $0 == avoided } }
         let mode = pool.randomElement() ?? .bars
 
@@ -491,7 +553,8 @@ private struct VisualizerUniforms {
     var seed: Float
     var histHead: Float
     var bloom: Float
-    var pad: Float = 0
+    /// Non-zero for scenes that are lit in linear light and want the filmic curve.
+    var filmic: Float = 0
     var mode: Int32
 }
 
@@ -570,6 +633,13 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
     private var beatPulse: Float = 0
 
     private let device: MTLDevice
+    /// Built the first time an Immersive mode is shown: it holds a million
+    /// particles and the fluid's textures, which the other modes never need.
+    private var immersive: ImmersiveRenderer?
+    private var immersiveFailed = false
+    /// How far the audio clock moved this frame; the Immersive scenes
+    /// integrate with it, so they stop with the music like everything else.
+    private var clockStep: Float = 0
     private let uniformBuffer: MTLBuffer
     private let spectrumBuffer: MTLBuffer
     private let waveformBuffer: MTLBuffer
@@ -785,16 +855,20 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
             return AutoPick(preset: preset, milkdrop: imported)
         }
 
-        if Float.random(in: 0...1) < 0.35 {
+        let classic = UserDefaults.standard.bool(forKey: VisualizerPreset.classicInShuffleKey)
+        if classic, Float.random(in: 0...1) < 0.25 {
             return AutoPick(preset: VisualizerPreset.remix(avoiding: current), milkdrop: nil)
         }
 
-        if bag.isEmpty { bag = Array(VisualizerPreset.rotation.indices).shuffled() }
+        let list = classic ? VisualizerPreset.immersiveRotation + VisualizerPreset.rotation
+                           : VisualizerPreset.immersiveRotation
+        if bag.isEmpty || bag.contains(where: { $0 >= list.count }) { bag = Array(list.indices).shuffled() }
         // Avoid the same mode twice running where the bag allows it.
-        if let current, bag.count > 1, VisualizerPreset.rotation[bag[bag.count - 1]].mode == current {
-            bag.swapAt(bag.count - 1, Int.random(in: 0..<(bag.count - 1)))
+        if let current, bag.count > 1, list[bag[bag.count - 1]].mode == current,
+           let other = bag.indices.dropLast().first(where: { list[bag[$0]].mode != current }) {
+            bag.swapAt(bag.count - 1, other)
         }
-        return AutoPick(preset: VisualizerPreset.rotation[bag.removeLast()], milkdrop: nil)
+        return AutoPick(preset: list[bag.removeLast()], milkdrop: nil)
     }
 
     /// Hold each preset for the dwell, then switch on the next beat so the
@@ -878,6 +952,24 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
         let source = accumTextures[accumIndex]
         let target = accumTextures[1 - accumIndex]
 
+        // Immersive scenes simulate (and the raymarched ones render) before
+        // the scene pass opens.
+        var scene: (ImmersiveRenderer, ImmersiveKind)?
+        if let kind = effectiveMode.immersive, warpPreset == nil {
+            if immersive == nil, !immersiveFailed {
+                immersive = ImmersiveRenderer(device: device)
+                immersiveFailed = immersive == nil
+            }
+            if let immersive {
+                let audio = ImmersiveAudio(dt: clockStep * 1.6, bass: bassEnvelope, mid: midEnergy,
+                                           treb: trebleEnergy, level: frame.level, beat: beatPulse)
+                immersive.update(kind: kind, seed: preset.seed, hue: preset.paletteShift, fade: fade,
+                                 audio: audio, size: size, spectrum: spectrumBuffer,
+                                 commandBuffer: commandBuffer)
+                scene = (immersive, kind)
+            }
+        }
+
         let scenePass = MTLRenderPassDescriptor()
         scenePass.colorAttachments[0].texture = target
         scenePass.colorAttachments[0].loadAction = accumNeedsClear ? .clear : .dontCare
@@ -904,7 +996,11 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
             accumNeedsClear = false
 
             // 2 — draw this frame's content over it.
-            if effectiveMode.isProcedural {
+            if let (renderer, kind) = scene {
+                renderer.draw(kind: kind, encoder: encoder)
+            } else if effectiveMode.immersive != nil {
+                // The scene renderer could not be built: leave the frame dark.
+            } else if effectiveMode.isProcedural {
                 encoder.setRenderPipelineState(preset.additive ? proceduralAddPipeline : proceduralPipeline)
                 encoder.setFragmentBuffer(uniformBuffer, offset: 0, index: 0)
                 encoder.setFragmentBuffer(spectrumBuffer, offset: 0, index: 1)
@@ -977,6 +1073,7 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
             seed: preset.seed,
             histHead: (Float(historyHead) + 0.5) / Float(Self.historyRows),
             bloom: preset.bloom,
+            filmic: preset.mode.immersive != nil ? 1 : 0,
             mode: preset.mode.proceduralIndex ?? 0
         )
         uniformBuffer.contents().copyMemory(
@@ -1019,6 +1116,7 @@ final class VisualizerRenderer: NSObject, MTKViewDelegate {
         audioMotion += (energy - audioMotion) * (energy > audioMotion ? 0.45 : 0.06)
         let step = 0.012 * min(3.0, audioMotion * 3.4)
         phase += step
+        clockStep = audioMotion > 0.002 ? step : 0
 
         // The history ring is pushed by the same clock, at most a row a frame.
         historyAccum += step
@@ -1730,7 +1828,8 @@ struct VisualizerWindow: View {
     @AppStorage(VisualizerMode.storageKey) private var storedMode = VisualizerMode.auto.rawValue
     @AppStorage(MilkdropLibrary.selectionKey) private var storedMilkdrop = ""
     @AppStorage("visualizerDwell") private var dwell = 30.0
-    @AppStorage("visualizerShuffleMilkdrop") private var shuffleMilkdrop = true
+    @AppStorage("visualizerShuffleMilkdrop") private var shuffleMilkdrop = false
+    @AppStorage(VisualizerPreset.classicInShuffleKey) private var shuffleClassic = false
     @AppStorage("visualizerLastManualMode") private var lastManualMode = VisualizerMode.plasma.rawValue
     @State private var isLocked = false
     @State private var showChrome = true
@@ -1948,8 +2047,9 @@ struct VisualizerWindow: View {
                         }
                     }
                 }
+                Divider()
+                Toggle("Include classic presets", isOn: $shuffleClassic)
                 if !milkdropLibrary.isEmpty {
-                    Divider()
                     Toggle("Include MilkDrop presets", isOn: $shuffleMilkdrop)
                 }
             } label: {

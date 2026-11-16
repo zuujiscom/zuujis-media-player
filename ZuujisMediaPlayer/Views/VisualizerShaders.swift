@@ -38,7 +38,7 @@ struct Uniforms {
     float seed;
     float histHead;
     float bloom;
-    float pad;
+    float filmic;
     int mode;
 };
 
@@ -176,7 +176,14 @@ fragment float4 f_feedback(FS in [[stage_in]],
 
     // The accumulation buffer is floating point, so additive layers would
     // otherwise climb without limit under a slow decay; see `capped`.
-    float3 col = capped(prev.sample(smp, uv).rgb) * u.decay;
+    float3 prior = prev.sample(smp, uv).rgb;
+    if (u.filmic > 0.5) {
+        // Immersive scenes: a plain decay. Their trails are bounded by it,
+        // and the cap and hue bleed below mix the channels, which lets a
+        // bright pixel flicker between two values forever in silence.
+        return float4(prior * u.decay, 1.0);
+    }
+    float3 col = capped(prior) * u.decay;
 
     // Bleed the hue along slightly so long trails drift in colour.
     col = mix(col, col.gbr, 0.012 * u.paletteShift);
@@ -216,8 +223,18 @@ fragment float4 f_composite(FS in [[stage_in]],
              + tex.sample(smp, in.uv, level(3.5)).rgb * 0.28
              + tex.sample(smp, in.uv, level(5.0)).rgb * 0.24
              + tex.sample(smp, in.uv, level(6.5)).rgb * 0.18;
-    c += max(b - 0.16, float3(0.0)) * u.bloom;
-    c = 1.0 - exp(-c * 1.9);
+    if (u.filmic > 0.5) {
+        // Immersive scenes are in linear light: bloom that favours the
+        // highlights, the ACES filmic curve (which keeps colour in bright
+        // areas where the plain exposure curve washes it out), then gamma.
+        float bl = dot(b, float3(0.3, 0.5, 0.2));
+        c += b * u.bloom * 1.1 * (bl / (bl + 0.35));
+        c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+        c = pow(c, float3(1.0 / 2.2));
+    } else {
+        c += max(b - 0.16, float3(0.0)) * u.bloom;
+        c = 1.0 - exp(-c * 1.9);
+    }
     float2 q = in.uv - 0.5;
     c *= 1.0 - dot(q, q) * 0.5;
     c += (hash21(in.position.xy) - 0.5) / 255.0;
