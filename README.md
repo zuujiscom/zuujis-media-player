@@ -84,6 +84,8 @@ equalizer itself only runs while you have it switched on.
 - **Your music library** (the folders you added and the tags read from them)
   in `library.json`, and your saved playlists in `playlists.json`, in the same
   folder. Your music files stay where they are.
+- **Loudness measurements** (each song's ReplayGain tags and what the app
+  measured for songs without them) in `loudness.json`, in the same folder.
 - **Its settings** (master gain, playback speed, which widgets are open, visualizer
   choices, whether device profiles are on) in its preferences file,
   `~/Library/Preferences/com.zuujis.MediaPlayer.plist`.
@@ -211,6 +213,38 @@ which leaves the next song in the bar ready to play. Choose **Off** to cancel.
 If a song was playing or paused when you quit, the next launch shows it at
 the same position, and Play carries on from there. Playing anything else
 first starts it from the beginning as usual.
+
+### Loudness matching and the limiter
+
+Albums are mastered at very different levels, so one song can be far louder
+than the last. **Playback → Loudness Matching** (also Settings → General →
+Loudness) brings the songs you play to the same level, -18 LUFS:
+
+- **By Album** (the default) gives a whole album one gain, so its quiet songs
+  stay quiet and a gapless album has no step between tracks. **By Track**
+  levels every song on its own. **Off** plays files as they are.
+- The ReplayGain tags a file already has are used first (FLAC, MP3 and M4A).
+  A file without them is measured by the app itself (ITU-R BS.1770, the
+  measure ReplayGain 2 uses): the playing album and the next song are measured
+  in the background, and **Measure Loudness of This Album / Whole Library**
+  does many at once. Results are kept in the app's own folder; your music
+  files are never changed.
+- A song is matched from its next start once it has been measured; the volume
+  never moves in the middle of a song. Until then it plays at the "songs not
+  measured yet" gain (-6 dB unless you change it).
+- **Keep Peaks Under Full Scale** raises a quiet song only as far as its
+  loudest peak allows.
+
+Loudness matching applies to songs played in the app, not to other apps' sound
+going through the system equalizer.
+
+The **limiter** is the last stage of both the player and the system equalizer.
+When the preamp, a boosted band or a loudness gain would push a peak past full
+scale, it turns the level down for that moment instead of letting it distort,
+and lets it back up afterwards. It adds 1.5 ms of delay and leaves anything
+under full scale untouched. The **LIMIT** light beside the preamp glows amber
+while it is working; click it (or Equalizer → Limiter) to turn the limiter off,
+and the light then reads **CLIP** and glows red when the output distorts.
 
 ### Speed
 
@@ -382,10 +416,30 @@ Try it on a copy first if the files matter.
 
 Choose **Visualizer → Open Visualizer**, or pick a mode from the Visualizer
 menu, or press the **Visualizer** button in the header. **Shuffle** moves
-through every visualization at random — the hand-tuned presets, freshly
-remixed ones, and any MilkDrop presets you have imported — dissolving from one
-to the next on a beat. Everything the visualizer draws is driven by the audio,
-so it sits still in silence.
+through the **Immersive** scenes at random, dissolving from one to the next on
+a beat. Everything the visualizer draws is driven by the audio, so it sits
+still in silence.
+
+The Immersive scenes are simulated or raymarched on the graphics card:
+
+- **Murmuration**: ribbons of light, one per frequency band, drawn through a
+  flow field by a million particles.
+- **Singularity**: a spiral disk of particles with jets on the beat.
+- **Attractor**: a million tracers in a strange attractor (Thomas, Lorenz or
+  Halvorsen).
+- **Deep Field**: the view ahead from a ship at speed. Stars stream past and
+  stretch into streaks as the bass pushes it faster, while real galaxies
+  (Hubble photographs, credited in `docs/deep-field-credits.md`) hang far off
+  and drift by over minutes.
+- **Cathedral**: a flight down a corridor cut through a fractal, with the
+  spectrum glowing on the stone.
+- **Liquid Light** and **Plume**: a fluid simulation with a jet for each band,
+  drawn as light along the folds of the flow.
+
+The older visualizations are still in the Visualizer menu (Geometric,
+Replicator, Simulation, Particles, Shader). To have Shuffle play them too, or
+your imported MilkDrop presets, turn on **Include classic presets** or
+**Include MilkDrop presets** in the timer button's menu.
 
 Move the pointer over the window for its controls, or use the keyboard:
 
@@ -436,8 +490,11 @@ Quit the app, copy the new `Zuujis Media Player.app` over the old one in
 - **No sound after pressing Start.** Check that Zuujis Media Player is allowed
   under System Settings → Privacy & Security → Screen & System Audio Recording.
   Then stop and start the engine.
-- **Sound is distorted.** Lower the master gain, or pull the boosted bands
-  down. Stacking large boosts on top of master gain clips.
+- **Sound is distorted.** Check that the limiter is on (the light beside the
+  preamp reads LIMIT, not CLIP). With it off, large boosts on top of the preamp
+  clip: lower the preamp or pull the boosted bands down.
+- **The sound pumps or seems squashed.** The LIMIT light is on most of the
+  time, so the limiter is doing a lot of work. Lower the preamp a few dB.
 - **Audio stays silent after the app quits unexpectedly.** Reopen the app and
   press Start and then Stop, or switch the output device in System Settings →
   Sound and back.
