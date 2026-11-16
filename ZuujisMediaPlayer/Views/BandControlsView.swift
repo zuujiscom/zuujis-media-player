@@ -575,7 +575,8 @@ struct PeakLight: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.15), value: over)
+        // No fade: an animated change renders the whole window on every
+        // frame of it, a plain one renders it once.
         .help(help(over: over, limiting: limiting))
         .accessibilityLabel("Limiter")
         .accessibilityValue(limiting ? (over ? "On, limiting" : "On") : (over ? "Off, clipping" : "Off"))

@@ -110,8 +110,28 @@ class LiveMeterView: NSView {
     private func fire() {
         // A hidden, minimised or covered window draws nothing.
         guard let window, window.occlusionState.contains(.visible) else { return }
-        Self.withoutAnimation { tick(Date()) }
+        let now = Date()
+        if restsOnSilence {
+            // Live but silent (EQ on, nothing playing anywhere): once the
+            // bars and their peak caps have had time to fall, there is
+            // nothing left to move, so no layer is touched until sound returns.
+            if engine.meters.snapshot.hasSignal {
+                silentSince = nil
+            } else if let since = silentSince {
+                if now.timeIntervalSince(since) > Self.settleTime { return }
+            } else {
+                silentSince = now
+            }
+        }
+        Self.withoutAnimation { tick(now) }
     }
+
+    /// Spectrum displays rest on silence. The once-a-second text and level
+    /// views cost nothing and keep their own change checks.
+    var restsOnSilence: Bool { rate > 1 }
+    private var silentSince: Date?
+    /// Longer than `SpectrumSmoother`'s slowest fall (peak caps, 0.22 a second).
+    private static let settleTime: TimeInterval = 5
 
     static func withoutAnimation(_ body: () -> Void) {
         CATransaction.begin()

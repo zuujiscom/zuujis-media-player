@@ -521,13 +521,41 @@ final class PlayerEngine: ObservableObject {
         state = .paused
         clearMeters()
         timelineChanged.send()
+        restEngineSoon()
     }
 
     func resume() {
         guard state == .paused else { return }
+        engineRest?.cancel()
+        guard engine.isRunning else {
+            // The engine was rested while paused: start again from the paused
+            // frame on the same path a seek takes.
+            if let first = segments.first {
+                resume(segment: first, at: pausedFrame, playing: true)
+            }
+            return
+        }
         player.play()
         state = .playing
         timelineChanged.send()
+    }
+
+    /// A paused player node leaves the engine pulling silence through the EQ
+    /// and limiter on the audio thread, about 3% of a core for as long as the
+    /// pause lasts. Shortly after a pause the engine is paused too; `resume()`
+    /// and every seek start it again. The delay lets the filters ring out and
+    /// keeps a quick pause/play on the cheap path.
+    private var engineRest: DispatchWorkItem?
+    private func restEngineSoon() {
+        engineRest?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.state == .paused, self.engine.isRunning else { return }
+                self.engine.pause()
+            }
+        }
+        engineRest = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     func stop() {
@@ -573,9 +601,10 @@ final class PlayerEngine: ObservableObject {
         guard state == .playing, engine.isRunning else { return 0 }
         // `presentationLatency` asks the audio server each time and lyrics read
         // this every 50 ms: it was a quarter of the main thread while playing.
-        // It only changes with the device, so once a second is plenty.
+        // It only changes with the device. Each read is a round trip to the
+        // audio server (about 4 ms of the main thread), so every 5 s.
         let now = Date()
-        if now.timeIntervalSince(presentationLatencyCache.read) >= 1 {
+        if now.timeIntervalSince(presentationLatencyCache.read) >= 5 {
             presentationLatencyCache = (engine.outputNode.presentationLatency, now)
         }
         // The limiter's look-ahead delays what is heard a little further.
@@ -750,10 +779,12 @@ final class PlayerEngine: ObservableObject {
         measureUpcoming()
 
         if playing {
+            engineRest?.cancel()
             player.play()
             state = .playing
         } else {
             state = .paused
+            restEngineSoon()
         }
         timelineChanged.send()
     }

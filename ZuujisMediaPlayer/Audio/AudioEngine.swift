@@ -971,7 +971,7 @@ final class AudioEngine: NSObject, ObservableObject {
         // No frames while the system audio is silent (this app's own output is
         // not captured), but the chip should still read the buffer length.
         guard let buffer = renderer.copyLatestFrames() else {
-            meters.setLatency(steadyLatency(renderer.latencyMs > 0 ? renderer.latencyMs : cachedOutputBufferMs()))
+            meters.routeSilent(latencyMs: steadyLatency(renderer.latencyMs > 0 ? renderer.latencyMs : cachedOutputBufferMs()))
             return
         }
         meters.publishRoute(MeterSnapshot(
@@ -1332,6 +1332,12 @@ struct MeterSnapshot {
     /// The largest sample since the last snapshot, after the EQ and before the
     /// limiter. Over 1.0 is past full scale: it clips, or the limiter catches it.
     var peak: Float = 0
+
+    /// Anything for the displays to draw. False for silence, whatever the
+    /// latency figure reads.
+    var hasSignal: Bool {
+        level != 0 || peak != 0 || spectrum.contains { $0 != 0 }
+    }
 }
 
 /// What the response graph, level meter and visualizer read. Two things feed
@@ -1375,9 +1381,17 @@ final class MeterState: ObservableObject {
     private var overUntil = Date.distantPast
     private static let overHold: TimeInterval = 2
 
+    /// When anything last went over. The light goes out only once a whole
+    /// hold has passed without a peak: clearing it the moment a reading's own
+    /// hold ran out made it blink off and straight back on every two seconds
+    /// through a loud song (the silent route reports a zero peak 20 times a
+    /// second), and each blink re-rendered the main window.
+    private var lastOver = Date.distantPast
+
     private func note(peak: Float) {
         let now = Date()
         if peak > 1 {
+            lastOver = now
             let db = Double(20 * log10(peak))
             // A new high, or the old one's hold has run out: show this peak
             // and hold it. A lower peak during the hold must not extend it,
@@ -1387,7 +1401,7 @@ final class MeterState: ObservableObject {
                 clip.set(db)
                 overUntil = now.addingTimeInterval(Self.overHold)
             }
-        } else if overDB != 0, now >= overUntil {
+        } else if overDB != 0, now >= overUntil, now.timeIntervalSince(lastOver) >= Self.overHold {
             clip.set(0)
         }
     }
@@ -1400,6 +1414,20 @@ final class MeterState: ObservableObject {
             setLatency(new.latencyMs)
         } else {
             snapshot = new
+        }
+    }
+
+    /// From the route's timer while the route has nothing to render (no
+    /// frames yet, or the tap has been silent long enough that the renderer
+    /// stopped). Takes the meters back from a player that has stopped, and
+    /// publishes only when something actually changes.
+    func routeSilent(latencyMs: Double) {
+        note(peak: 0)
+        guard !playerOwnsMeters else { setLatency(latencyMs); return }
+        if snapshot.hasSignal {
+            snapshot = MeterSnapshot(latencyMs: latencyMs)
+        } else {
+            setLatency(latencyMs)
         }
     }
 
@@ -1458,7 +1486,43 @@ final class SystemAudioRenderer: @unchecked Sendable {
         renderBuffer = buffer
         self.limiter = limiter
         limiterWasOn = false
+        silentFrames = 0
+        idle = false
         renderLock.unlock()
+    }
+
+    /// Frames of unbroken digital silence from the tap. Once it passes
+    /// `silenceHold` the EQ graph is not rendered: with nothing else playing
+    /// (the usual case while this app's own player runs, which the tap does
+    /// not capture) the graph was filtering zeros at about 4% of a core. The
+    /// hold lets the filters and the limiter ring out first, so by the time
+    /// rendering stops their state is zero and it can resume on any cycle.
+    /// Guarded by `renderLock`.
+    private var silentFrames = 0
+    /// Set while rendering is skipped, so the main actor's meter timer does
+    /// not copy and analyse a window of zeros 20 times a second. A plain flag:
+    /// a stale read costs one meter tick.
+    private var idle = false
+    private static let silenceHold = 2.0
+
+    /// True when every sample the tap delivered this cycle is exactly zero.
+    /// Only for float input; anything else counts as sound. Realtime-safe.
+    private func tapIsSilent(_ input: UnsafePointer<AudioBufferList>) -> Bool {
+        guard inputASBD.mFormatID == kAudioFormatLinearPCM,
+              inputASBD.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              inputASBD.mBitsPerChannel == 32 else { return false }
+        let src = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+        guard src.count > 0 else { return false }
+        let offset = inputBufferOffset < src.count ? inputBufferOffset : 0
+        for index in offset..<src.count {
+            guard let data = src[index].mData else { continue }
+            let count = Int(src[index].mDataByteSize) / MemoryLayout<Float>.size
+            guard count > 0 else { continue }
+            var peak: Float = 0
+            vDSP_maxmgv(data.assumingMemoryBound(to: Float.self), 1, &peak, vDSP_Length(count))
+            if peak != 0 { return false }
+        }
+        return true
     }
 
     /// The last stage before the device: see `SoftLimiter`. Guarded by
@@ -1593,6 +1657,19 @@ final class SystemAudioRenderer: @unchecked Sendable {
             return
         }
 
+        if tapIsSilent(input) {
+            let hold = Int(Self.silenceHold * max(8000, outputASBD.mSampleRate))
+            if silentFrames >= hold {
+                idle = true
+                silence(outList)
+                return
+            }
+            silentFrames += Int(frames)
+        } else {
+            silentFrames = 0
+        }
+        idle = false
+
         capturedInput = input
         defer { capturedInput = nil }
 
@@ -1724,7 +1801,7 @@ final class SystemAudioRenderer: @unchecked Sendable {
         defer { scratchLock.unlock() }
 
         let available = scratchFilled ? scratch.count : scratchWriteIndex
-        guard available > 0 else { return nil }
+        guard available > 0, !idle else { return nil }
 
         if snapshotBuffer == nil || snapshotBuffer?.format.sampleRate != scratchSampleRate {
             guard let format = AVAudioFormat(standardFormatWithSampleRate: scratchSampleRate, channels: 1) else {
