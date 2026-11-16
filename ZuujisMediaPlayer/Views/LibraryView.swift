@@ -223,6 +223,9 @@ struct LibraryView: View {
             let n = library.offlineFolders.count
             text += " · \(n) folder\(n == 1 ? "" : "s") offline"
         }
+        // A loudness batch (Playback → Loudness Matching) reports here too:
+        // its menu is the only other place, and nobody keeps a menu open.
+        if let loudness = player.loudness.batchStatus { return text + " · " + loudness }
         if let scan = library.lastScan?.text { text += " · " + scan }
         return text
     }

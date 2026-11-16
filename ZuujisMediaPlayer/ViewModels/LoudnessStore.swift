@@ -276,7 +276,8 @@ final class LoudnessStore: ObservableObject {
             self.isMeasuringBatch = false
             self.batchTask = nil
             self.saveNow()
-            try? await Task.sleep(for: .seconds(8))
+            // Long enough to be seen after a run that finished unwatched.
+            try? await Task.sleep(for: .seconds(60))
             if self.batchTask == nil { self.batchStatus = nil }
         }
     }
