@@ -287,6 +287,112 @@ final class LyricsStore: ObservableObject {
     /// A song comes in several cuts (radio edit, album, extended) and LRCLIB
     /// keeps each one's own timing, so a synced version is only used when its
     /// length is close to the file's.
+    /// Simpler forms of a tagged title, most specific first: guest credits
+    /// and "(Skit)"-style notes removed, a leading "Guest - " dropped, and
+    /// censored words ("N****z") turned into a wildcard-free form.
+    nonisolated static func titleVariants(_ title: String) -> [String] {
+        var out: [String] = []
+        func add(_ t: String) {
+            let t = t.replacingOccurrences(of: "  ", with: " ").trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty, !out.contains(t) { out.append(t) }
+        }
+        let credit = #"\s*[\(\[]\s*(feat\.?|featuring|ft\.?|with|prod\.?)\s[^\)\]]*[\)\]]"#
+        let anyBracket = #"\s*[\(\[][^\)\]]*[\)\]]"#
+        let trailingFeat = #"\s+(feat\.?|featuring|ft\.?)\s.*$"#
+        func re(_ s: String, _ pattern: String) -> String {
+            s.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        var bases = [title]
+        // "Project Pat - Drive By": the part after the dash is the song.
+        for sep in [" - ", " – ", " — "] where title.contains(sep) {
+            bases.append(String(title[title.range(of: sep)!.upperBound...]))
+        }
+        for b in bases {
+            let noCredit = re(re(b, credit), trailingFeat)
+            add(noCredit)
+            add(re(noCredit, anyBracket))
+            add(noCredit.replacingOccurrences(of: "[", with: "(").replacingOccurrences(of: "]", with: ")"))
+        }
+        // Censored words: LRCLIB's titles are usually spelled out.
+        for t in out where t.contains("*") {
+            add(t.replacingOccurrences(of: #"\w*\*+\w*"#, with: "", options: .regularExpression))
+        }
+        // "Part Ii" from title-casing.
+        for t in out where t.range(of: #"\bIi\b"#, options: .regularExpression) != nil {
+            add(t.replacingOccurrences(of: #"\bIi\b"#, with: "II", options: .regularExpression))
+        }
+        return out
+    }
+
+    /// Loose comparison key: letters and digits only, credits and brackets removed.
+    nonisolated static func titleKey(_ title: String) -> String {
+        (titleVariants(title).last(where: { !$0.contains("(") && !$0.contains("[") }) ?? title)
+            .lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    /// Plain lyrics from lyrics.ovh (free, no key): the second source, used
+    /// only when LRCLIB has no lyrics at all. Tries the cleaned titles too.
+    nonisolated static func lyricsOVH(title: String, artist: String) async -> String? {
+        for name in ([title] + titleVariants(title).filter { $0 != title }).prefix(4) {
+            let path = "https://api.lyrics.ovh/v1/"
+                + (artist.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["/"])) ?? "") + "/"
+                + (name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["/"])) ?? "")
+            guard let url = URL(string: path) else { continue }
+            var req = URLRequest(url: url, timeoutInterval: 15)
+            req.setValue("ZuujisMediaPlayer (https://github.com/zuujiscom/zuujis-media-player)", forHTTPHeaderField: "User-Agent")
+            guard let (data, response) = try? await URLSession.shared.data(for: req),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  var text = json["lyrics"] as? String else { continue }
+            // Its first line is often "Paroles de la chanson … par …".
+            if text.hasPrefix("Paroles de la chanson"), let cut = text.firstIndex(of: "\n") {
+                text = String(text[text.index(after: cut)...])
+            }
+            text = text.replacingOccurrences(of: "\r\n", with: "\n")
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        }
+        return nil
+    }
+
+    // MARK: Pasted lyrics
+
+    /// Lyrics the user pasted for a song, kept in the app's folder (never
+    /// beside the music) under a name made from the song's path.
+    nonisolated static func pastedFile(for url: URL) -> URL {
+        let dir = AppPaths.support.appendingPathComponent("Lyrics/Pasted", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var hash: UInt64 = 5381
+        for byte in url.path.utf8 { hash = (hash &* 33) ^ UInt64(byte) }
+        return dir.appendingPathComponent(String(hash, radix: 16) + ".txt")
+    }
+
+    nonisolated static func pasted(for url: URL) -> Lyrics? {
+        guard let text = try? String(contentsOf: pastedFile(for: url), encoding: .utf8) else { return nil }
+        return Lyrics.parse(text)
+    }
+
+    /// Saves the clipboard's text as this song's lyrics and shows them.
+    /// Returns false when the clipboard holds no usable text.
+    @discardableResult
+    func pasteLyrics(_ text: String, for url: URL) -> Bool {
+        let cleaned = text.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, Lyrics.parse(cleaned) != nil else { return false }
+        do { try cleaned.write(to: Self.pastedFile(for: url), atomically: true, encoding: .utf8) } catch { return false }
+        // A timed copy made from earlier lyrics would hide the new ones.
+        try? FileManager.default.removeItem(at: LyricsTimer.wordsFile(for: url))
+        missed.remove(url)
+        if let track = currentTrack, track.url == url { load(track) }
+        return true
+    }
+
+    /// Forgets pasted lyrics for this song.
+    func removePastedLyrics(for url: URL) {
+        try? FileManager.default.removeItem(at: Self.pastedFile(for: url))
+        // The timed copy was made from the pasted text, so it goes too.
+        try? FileManager.default.removeItem(at: LyricsTimer.wordsFile(for: url))
+        if let track = currentTrack, track.url == url { load(track) }
+    }
+
     private nonisolated static let lengthTolerance = 8.0
     /// Bumped when the choice of version changes, so older saves are refetched.
     private nonisolated static let cacheRevision = 2
@@ -333,7 +439,40 @@ final class LyricsStore: ObservableObject {
             URLQueryItem(name: "track_name", value: track.title),
             URLQueryItem(name: "artist_name", value: artist),
         ]) as? [[String: Any]] { candidates += found }
-        if candidates.isEmpty { return (nil, "Not found on LRCLIB.") }
+        // Titles with extra words ("(feat. …)", "(Skit)", "Guest - Song",
+        // censored words) often miss: try cleaned titles, then a free-text
+        // search, keeping only results whose title matches.
+        func hasSynced(_ list: [[String: Any]]) -> Bool {
+            list.contains { ($0["syncedLyrics"] as? String).map { !$0.isEmpty } ?? false }
+        }
+        if !hasSynced(candidates) {
+            let variants = titleVariants(track.title).filter { $0 != track.title }
+            for title in variants {
+                if let found = await request("search", [
+                    URLQueryItem(name: "track_name", value: title),
+                    URLQueryItem(name: "artist_name", value: artist),
+                ]) as? [[String: Any]] { candidates += found }
+                if hasSynced(candidates) { break }
+            }
+            if !hasSynced(candidates) {
+                let keys = Set(([track.title] + variants).map(titleKey))
+                for title in [track.title] + variants.prefix(2) {
+                    if let found = await request("search", [URLQueryItem(name: "q", value: "\(title) \(artist)")]) as? [[String: Any]] {
+                        candidates += found.filter { keys.contains(titleKey(($0["trackName"] as? String) ?? "")) }
+                    }
+                    if let found = await request("search", [URLQueryItem(name: "track_name", value: title)]) as? [[String: Any]] {
+                        candidates += found.filter { keys.contains(titleKey(($0["trackName"] as? String) ?? "")) }
+                    }
+                    if hasSynced(candidates) { break }
+                }
+            }
+        }
+        if candidates.isEmpty {
+            if let text = await lyricsOVH(title: track.title, artist: artist), let lyrics = Lyrics.parse(text) {
+                return (lyrics, nil)
+            }
+            return (nil, "Not found on LRCLIB or lyrics.ovh.")
+        }
 
         func length(_ c: [String: Any]) -> Double { (c["duration"] as? Double) ?? (c["duration"] as? Int).map(Double.init) ?? 0 }
         func synced(_ c: [String: Any]) -> String? { (c["syncedLyrics"] as? String).flatMap { $0.isEmpty ? nil : $0 } }
@@ -383,7 +522,11 @@ final class LyricsStore: ObservableObject {
         }
 
         // Otherwise plain text is still worth showing; timed lyrics of the wrong
-        // cut would only be misleading.
+        // cut would only be misleading. lyrics.ovh fills in when LRCLIB has none.
+        let lrclibPlain = candidates.contains { ($0["plainLyrics"] as? String).map { !$0.isEmpty } ?? false }
+        if !lrclibPlain, let text = await lyricsOVH(title: track.title, artist: artist), let lyrics = Lyrics.parse(text) {
+            return (lyrics, nil)
+        }
         if let plain = candidates.compactMap({ $0["plainLyrics"] as? String }).first(where: { !$0.isEmpty }),
            let lyrics = Lyrics.parse(plain) {
             return (lyrics, candidates.contains { synced($0) != nil } ? "Only other cuts of this song have synced lyrics." : nil)
@@ -449,6 +592,9 @@ final class LyricsStore: ObservableObject {
     nonisolated static func find(for url: URL) async -> Lyrics? {
         if let words = await Task.detached(priority: .utility, operation: { wordTimed(for: url) }).value {
             return words
+        }
+        if let pasted = await Task.detached(priority: .utility, operation: { pasted(for: url) }).value {
+            return pasted
         }
         if let sidecar = await Task.detached(priority: .utility, operation: { sidecar(for: url) }).value {
             return sidecar

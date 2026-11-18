@@ -11,6 +11,7 @@ struct LibraryView: View {
     @EnvironmentObject private var player: PlayerEngine
     @EnvironmentObject private var queue: PlaybackQueue
     @EnvironmentObject private var playlists: PlaylistStore
+    @EnvironmentObject private var lyricsStore: LyricsStore
 
     enum Browse: String { case artists, genres, playlists }
 
@@ -345,6 +346,7 @@ struct LibraryView: View {
                         Divider()
                         Button("Edit Info…") { edit(tracks, "Artist: \(entry.name)", artist: entry.name) }
                         genreMenu { tracks }
+                        pasteLyricsItems(tracks)
                     }
             }
         }
@@ -372,6 +374,7 @@ struct LibraryView: View {
                         Divider()
                         Button("Edit Info…") { edit(tracks, "Album: \(entry.name)") }
                         genreMenu { tracks }
+                        pasteLyricsItems(tracks)
                     }
             }
         }
@@ -444,6 +447,7 @@ struct LibraryView: View {
                     edit(targets, many ? "\(targets.count) songs" : song.title)
                 }
                 genreMenu { targets }
+                pasteLyricsItems(targets)
                 if targets.contains(where: library.isEdited) {
                     Button("Revert Library Edits") { library.resetEdits(for: targets) }
                 }
@@ -607,6 +611,7 @@ struct LibraryView: View {
                     edit(tracks, many ? "\(tracks.count) songs" : (tracks[0].title))
                 }
                 genreMenu { tracks }
+                pasteLyricsItems(tracks)
             }
             Divider()
             Button("Select All Songs") { selection = Set(list.paths) }
@@ -682,6 +687,21 @@ struct LibraryView: View {
             if !playlists.playlists.isEmpty { Divider() }
             ForEach(playlists.playlists) { list in
                 Button(list.name) { addToPlaylist(tracks().map(\.id), list.id) }
+            }
+        }
+    }
+
+    /// "Paste Lyrics": saves the clipboard's text as one song's lyrics, in
+    /// the app's own folder (see `LyricsStore.pastedFile`).
+    @ViewBuilder
+    private func pasteLyricsItems(_ tracks: [LibraryTrack]) -> some View {
+        if tracks.count == 1, let url = tracks.first?.url {
+            Button("Paste Lyrics") {
+                let text = NSPasteboard.general.string(forType: .string) ?? ""
+                if !lyricsStore.pasteLyrics(text, for: url) { NSSound.beep() }
+            }
+            if FileManager.default.fileExists(atPath: LyricsStore.pastedFile(for: url).path) {
+                Button("Remove Pasted Lyrics") { lyricsStore.removePastedLyrics(for: url) }
             }
         }
     }

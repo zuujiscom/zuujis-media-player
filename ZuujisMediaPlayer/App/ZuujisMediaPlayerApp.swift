@@ -350,7 +350,17 @@ struct ZuujisMediaPlayerApp: App {
 
                 Divider()
 
-                Toggle("Look Up Missing Lyrics Online (LRCLIB)", isOn: $lyrics.onlineLookup)
+                Toggle("Look Up Missing Lyrics Online (LRCLIB, lyrics.ovh)", isOn: $lyrics.onlineLookup)
+                Button("Paste Lyrics for This Song") {
+                    guard let track = player.track else { return }
+                    let text = NSPasteboard.general.string(forType: .string) ?? ""
+                    if !lyrics.pasteLyrics(text, for: track.url) { NSSound.beep() }
+                }
+                .disabled(player.track == nil)
+                if let track = player.track,
+                   FileManager.default.fileExists(atPath: LyricsStore.pastedFile(for: track.url).path) {
+                    Button("Remove Pasted Lyrics for This Song") { lyrics.removePastedLyrics(for: track.url) }
+                }
                 Button(lyrics.recheckStatus ?? "Re-check Saved Online Lyrics") { lyrics.recheckSaved() }
                     .disabled(lyrics.recheckStatus != nil)
                 if lyrics.isTimingBatch {
